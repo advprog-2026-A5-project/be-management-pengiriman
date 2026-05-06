@@ -1,23 +1,11 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.model;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-
-import java.util.UUID;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.model.Pengiriman;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Entity
-@Table(name = "pengiriman_items")
+@Table(name = "shipment_items")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -27,15 +15,16 @@ public class PengirimanItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
-    private Long id;
+    private long id;
 
+    @ManyToOne
+    @JoinColumn(name = "shipment_id", nullable = false)
+    private Pengiriman shipment;
+
+    // Reference to approved harvest ID from another module
     @Column(nullable = false)
-    private UUID harvestId;
+    private long harvestId;
 
     @Column(nullable = false)
     private double weightKg;
-
-    @ManyToOne
-    @JoinColumn(name = "shipment_id")
-    private Pengiriman shipment;
 }

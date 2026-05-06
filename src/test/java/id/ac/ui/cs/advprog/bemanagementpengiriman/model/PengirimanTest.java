@@ -15,14 +15,16 @@
         private Pengiriman pengiriman;
         private Long driverId;
         private Long mandorId;
+        private long harvestId;
 
         @BeforeEach
         void setUp() {
             driverId = 2L;
             mandorId = 1L;
 
+            harvestId = 123L;
             PengirimanItem item = PengirimanItem.builder()
-                    .harvestId(UUID.fromString("eb558e9f-1c39-460e-8860-71af6af63bd6"))
+                    .harvestId(harvestId)
                     .weightKg(150.0)
                     .build();
 
