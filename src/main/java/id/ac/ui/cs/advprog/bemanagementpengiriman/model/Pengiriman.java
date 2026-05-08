@@ -1,6 +1,5 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.model;
 
-// import id.ac.ui.cs.advprog.bemanagementpengiriman.enums.StatusPengiriman;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.enums.StatusPengiriman;
 import jakarta.persistence.*;
 import lombok.*;
