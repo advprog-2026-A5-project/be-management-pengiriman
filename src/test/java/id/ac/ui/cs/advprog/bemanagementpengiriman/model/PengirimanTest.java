@@ -6,23 +6,19 @@
 
     import java.time.LocalDateTime;
     import java.util.List;
-    import java.util.UUID;
 
     import static org.junit.jupiter.api.Assertions.*;
 
     class PengirimanTest {
 
         private Pengiriman pengiriman;
-        private Long driverId;
-        private Long mandorId;
-        private long harvestId;
 
         @BeforeEach
         void setUp() {
-            driverId = 2L;
-            mandorId = 1L;
+            Long driverId = 2L;
+            Long mandorId = 1L;
 
-            harvestId = 123L;
+            long harvestId = 123L;
             PengirimanItem item = PengirimanItem.builder()
                     .harvestId(harvestId)
                     .weightKg(150.0)

@@ -1,11 +1,10 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.model;
 
-import id.ac.ui.cs.advprog.bemanagementpengiriman.model.Pengiriman;
 import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "shipment_items")
+@Table(name = "pengiriman_items")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -18,7 +17,7 @@ public class PengirimanItem {
     private long id;
 
     @ManyToOne
-    @JoinColumn(name = "shipment_id", nullable = false)
+    @JoinColumn(name = "pengiriman_id", nullable = false)
     private Pengiriman shipment;
 
     // Reference to approved harvest ID from another module
