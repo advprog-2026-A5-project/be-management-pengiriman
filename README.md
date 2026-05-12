@@ -142,3 +142,46 @@ Dari hasil Risk Storming, arsitektur masa depan tidak hanya dibuat agar terlihat
 API Gateway ditambahkan untuk membantu validasi akses dan membuat request masuk lebih terkontrol. Load balancer dan multiple backend instance ditambahkan untuk mengurangi risiko downtime. PostgreSQL/PostGIS tetap digunakan karena cocok untuk data koordinat kebun, dan untuk bagian kebun sudah diperkuat dengan DB-level locking agar operasi overlap-sensitive lebih aman. Kafka digunakan untuk komunikasi asynchronous agar modul seperti kebun, pengiriman, pembayaran, dan notifikasi tidak saling bergantung terlalu kuat.
 
 Selain itu, Redis atau cache bisa digunakan untuk data yang sering dibaca, misalnya daftar kebun atau data assignment, tetapi tidak boleh menjadi sumber kebenaran utama. Object storage juga lebih cocok untuk bukti foto hasil panen daripada menyimpannya langsung di server aplikasi.
+
+
+# 3. Future Architecture
+
+## 3.1 Future Architecture Goals
+
+Future architecture dibuat untuk menjawab risiko yang muncul dari current architecture. Tujuan utamanya adalah membuat MySawit lebih aman, lebih scalable, lebih mudah dipantau, dan lebih jelas batas antar modulnya.
+
+Pada future architecture, sistem diarahkan untuk memiliki API Gateway, service yang lebih jelas berdasarkan domain, event broker untuk komunikasi asynchronous, object storage untuk file bukti hasil panen, observability stack, dan database yang lebih siap untuk backup serta recovery.
+
+## 3.2 Future System Context Diagram
+
+![Future System Context Diagram](docs/architecture/images/future-context.png)
+
+Future context diagram menunjukkan bahwa MySawit tidak hanya menjadi aplikasi internal sederhana, tetapi menjadi platform operasional yang terhubung dengan identity provider, payment gateway, storage, dan monitoring. Sistem ini perlu menangani lebih banyak pengguna dan proses bisnis yang lebih kritis.
+
+## 3.3 Future Container Diagram
+
+![Future Container Diagram](docs/architecture/images/future-container.png)
+
+Future container diagram menunjukkan bahwa setiap service memiliki tanggung jawab yang lebih jelas. Auth Service menangani login dan role. Kebun Service menangani data kebun dan assignment. Harvest Service menangani laporan hasil panen. Shipping Service menangani pengiriman. Payment Service menangani payroll dan wallet. Notification Service menangani pesan kepada user.
+
+Kafka digunakan untuk event seperti assignment, harvest approved, shipment approved, payroll created, dan notification requested. Dengan cara ini, setiap service tidak harus langsung membaca database service lain.
+
+## 3.4 How Future Architecture Mitigates Risks
+
+Future architecture membantu mengurangi risiko dengan beberapa cara:
+
+1. API Gateway dan Auth Service mengurangi risiko akses tidak sah.
+2. Load balancer dan multiple backend instance mengurangi risiko downtime.
+3. Kafka mengurangi coupling antarmodul.
+4. Object storage membantu mengelola file bukti hasil panen dengan lebih scalable.
+5. Monitoring dan logging membantu debugging ketika sistem mulai besar.
+6. Backup database membantu recovery jika terjadi masalah data.
+7. DB-level locking tetap digunakan pada modul kebun untuk menjaga konsistensi data spasial.
+
+## 3.5 Future Architecture Trade-offs
+
+Arsitektur future menjadi lebih kompleks. Jumlah service bertambah, deployment lebih sulit, dan observability menjadi lebih penting. Tim juga harus lebih disiplin dalam membuat kontrak API dan event agar service tidak saling bergantung secara sembarangan.
+
+Namun, trade-off ini masuk akal karena MySawit punya banyak alur bisnis yang saling terhubung. Kalau semuanya tetap dibuat terlalu sederhana, sistem akan sulit berkembang ketika jumlah data, user, dan transaksi bertambah.
+
+
