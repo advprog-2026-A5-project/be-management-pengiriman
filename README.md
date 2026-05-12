@@ -185,3 +185,22 @@ Arsitektur future menjadi lebih kompleks. Jumlah service bertambah, deployment l
 Namun, trade-off ini masuk akal karena MySawit punya banyak alur bisnis yang saling terhubung. Kalau semuanya tetap dibuat terlalu sederhana, sistem akan sulit berkembang ketika jumlah data, user, dan transaksi bertambah.
 
 
+
+
+# 4. Individual Work: Pengiriman Module
+
+## 4.1 Individual Container Diagram
+
+![Individual Container Diagram](docs/architecture/images/individual_container.png)
+
+## 4.2 Individual Component Diagram
+![Individual Component Diagram](docs/architecture/images/individual-component.png)
+
+## 4.3 Code Diagram 1 - Class Diagram
+
+![Code Diagram 1](docs/architecture/images/code_diagram_1.png)
+
+## 4.5 Code Diagram 2 - Lifecycle Sequence
+
+![Code Diagram 2](docs/architecture/images/code_diagram_2.png)
+
