@@ -36,6 +36,9 @@ public class Pengiriman {
     @Column(nullable = false)
     private double totalWeightKg;
 
+    @Version
+    private Long version;
+
     private String rejectionReason;
 
     private Double acknowledgedWeightKg;
