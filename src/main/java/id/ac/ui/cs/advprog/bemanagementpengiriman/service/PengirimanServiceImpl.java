@@ -10,6 +10,8 @@ import id.ac.ui.cs.advprog.bemanagementpengiriman.repository.PengirimanRepositor
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.retry.annotation.Backoff;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -39,10 +41,15 @@ public class PengirimanServiceImpl implements PengirimanService {
 
     private final PengirimanRepository pengirimanRepository;
     private final UserClient userClient;
+    private final id.ac.ui.cs.advprog.bemanagementpengiriman.events.EventPublisher eventPublisher;
 
     @Override
     @Transactional
-    public Pengiriman assignDriver(Long mandorId, AssignDriverRequest request) {
+    @Retryable(
+            retryFor = org.springframework.orm.ObjectOptimisticLockingFailureException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100)
+    )    public Pengiriman assignDriver(Long mandorId, AssignDriverRequest request) {
         validateAssignDriverRequest(request);
 
         ensureUserExists(mandorId, "Mandor not found");
@@ -103,7 +110,13 @@ public class PengirimanServiceImpl implements PengirimanService {
             pengiriman.getItems().add(pengirimanItem);
         }
 
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        try {
+            eventPublisher.publish("pengiriman-assigned", saved);
+        } catch (Exception ignored) {
+            // best-effort publish
+        }
+        return saved;
     }
 
     @Override
@@ -230,7 +243,9 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setStatus(StatusPengiriman.APPROVED_MANDOR);
         pengiriman.setRejectionReason(null);
         pengiriman.setAcknowledgedWeightKg(pengiriman.getTotalWeightKg());
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        try { eventPublisher.publish("pengiriman-approved-mandor", saved); } catch (Exception ignored) {}
+        return saved;
     }
 
     @Override
@@ -253,7 +268,9 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setStatus(StatusPengiriman.REJECTED_MANDOR);
         pengiriman.setRejectionReason(validatedReason);
         pengiriman.setAcknowledgedWeightKg(null);
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        try { eventPublisher.publish("pengiriman-rejected-mandor", saved); } catch (Exception ignored) {}
+        return saved;
     }
 
     @Override
@@ -271,7 +288,9 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setStatus(StatusPengiriman.APPROVED_ADMIN);
         pengiriman.setRejectionReason(null);
         pengiriman.setAcknowledgedWeightKg(pengiriman.getTotalWeightKg());
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        try { eventPublisher.publish("pengiriman-approved-admin", saved); } catch (Exception ignored) {}
+        return saved;
     }
 
     @Override
@@ -291,7 +310,9 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setStatus(StatusPengiriman.REJECTED_ADMIN);
         pengiriman.setRejectionReason(validatedReason);
         pengiriman.setAcknowledgedWeightKg(null);
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        try { eventPublisher.publish("pengiriman-rejected-admin", saved); } catch (Exception ignored) {}
+        return saved;
     }
 
     @Override
@@ -323,7 +344,9 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setStatus(StatusPengiriman.PARTIALLY_REJECTED_ADMIN);
         pengiriman.setAcknowledgedWeightKg(acknowledgedWeightKg);
         pengiriman.setRejectionReason(validatedReason);
-        return pengirimanRepository.save(pengiriman);
+        Pengiriman saved = pengirimanRepository.save(pengiriman);
+        try { eventPublisher.publish("pengiriman-partial-rejected-admin", saved); } catch (Exception ignored) {}
+        return saved;
     }
 
     @Override
