@@ -1,6 +1,5 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.model;
 
-// import id.ac.ui.cs.advprog.bemanagementpengiriman.enums.StatusPengiriman;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.enums.StatusPengiriman;
 import jakarta.persistence.*;
 import lombok.*;
@@ -36,6 +35,9 @@ public class Pengiriman {
 
     @Column(nullable = false)
     private double totalWeightKg;
+
+    @Version
+    private Long version;
 
     private String rejectionReason;
 

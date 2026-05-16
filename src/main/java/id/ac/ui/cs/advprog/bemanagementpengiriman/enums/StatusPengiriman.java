@@ -16,7 +16,7 @@ public enum StatusPengiriman {
 
 
     private final String value;
-    private StatusPengiriman(String value) {
+    StatusPengiriman(String value) {
         this.value = value;
     }
 
