@@ -1,8 +1,13 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.service;
 
 import id.ac.ui.cs.advprog.bemanagementpengiriman.client.HarvestClient;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.client.KebunClient;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.client.PaymentClient;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.client.UserClient;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.AssignDriverRequest;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.HarvestTransportEligibilityResponse;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.KebunDetailResponse;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.MandorKebunAssignmentResponse;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.UserSummary;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.enums.StatusPengiriman;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.model.Pengiriman;
@@ -19,20 +24,26 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class PengirimanServiceImpl implements PengirimanService {
 
     private static final double MAX_WEIGHT_KG = 400.0;
+    private static final String ROLE_MANDOR = "MANDOR";
+    private static final String ROLE_SUPIR = "SUPIR";
+    private static final String ROLE_ADMIN = "ADMIN";
     private static final List<StatusPengiriman> ACTIVE_SHIPMENT_STATUSES = List.of(
             StatusPengiriman.MEMUAT,
             StatusPengiriman.MENGIRIM,
             StatusPengiriman.TIBA_DI_TUJUAN
     );
-        private static final List<StatusPengiriman> DRIVER_HISTORY_STATUSES = List.of(
+        private static final List<StatusPengiriman> SUPIR_HISTORY_STATUSES = List.of(
             StatusPengiriman.APPROVED_MANDOR,
             StatusPengiriman.REJECTED_MANDOR,
             StatusPengiriman.APPROVED_ADMIN,
@@ -43,6 +54,8 @@ public class PengirimanServiceImpl implements PengirimanService {
     private final PengirimanRepository pengirimanRepository;
     private final UserClient userClient;
     private final HarvestClient harvestClient;
+    private final KebunClient kebunClient;
+    private final PaymentClient paymentClient;
     private final id.ac.ui.cs.advprog.bemanagementpengiriman.events.EventPublisher eventPublisher;
 
     @Override
@@ -54,11 +67,13 @@ public class PengirimanServiceImpl implements PengirimanService {
     )    public Pengiriman assignDriver(Long mandorId, AssignDriverRequest request) {
         validateAssignDriverRequest(request);
 
-        ensureUserExists(mandorId, "Mandor not found");
-        ensureUserExists(request.getDriverId(), "Driver not found");
+        ensureUserHasRole(mandorId, ROLE_MANDOR, "Mandor not found");
+        ensureUserHasRole(request.getDriverId(), ROLE_SUPIR, "Driver not found");
+        String kebunCode = ensureDriverAssignedToMandorKebun(mandorId, request.getDriverId());
 
         double totalWeight = 0.0;
-        Set<Long> harvestIdsInRequest = new HashSet<>();
+        Set<UUID> harvestIdsInRequest = new HashSet<>();
+        Map<UUID, HarvestTransportEligibilityResponse> eligibilityByHarvestId = new LinkedHashMap<>();
 
         for (AssignDriverRequest.HarvestItemDto item : request.getHarvestItems()) {
             if (item == null) {
@@ -67,16 +82,19 @@ public class PengirimanServiceImpl implements PengirimanService {
             if (item.getHarvestId() == null) {
                 throw new IllegalArgumentException("Harvest ID is required for each item");
             }
-            if (item.getWeightKg() <= 0) {
-                throw new IllegalArgumentException("Each harvest item weight must be greater than 0");
-            }
             if (!harvestIdsInRequest.add(item.getHarvestId())) {
                 throw new IllegalArgumentException("Duplicate harvest item in request");
             }
 
-            if (!harvestClient.isApprovedHarvest(item.getHarvestId())) {
+            HarvestTransportEligibilityResponse eligibility = harvestClient.getTransportEligibility(item.getHarvestId())
+                    .orElseThrow(() -> new IllegalArgumentException("Harvest item is not found"));
+            if (!eligibility.eligible()) {
                 throw new IllegalArgumentException("Harvest item is not approved");
             }
+            if (eligibility.kilogram() == null || eligibility.kilogram().doubleValue() <= 0) {
+                throw new IllegalArgumentException("Harvest item weight must be greater than 0");
+            }
+            eligibilityByHarvestId.put(item.getHarvestId(), eligibility);
 
             long activeShipmentCount = pengirimanRepository.countActiveShipmentByHarvestId(
                     item.getHarvestId(), ACTIVE_SHIPMENT_STATUSES);
@@ -85,7 +103,7 @@ public class PengirimanServiceImpl implements PengirimanService {
                     "Harvest item already assigned to an active shipment");
             }
 
-            totalWeight += item.getWeightKg();
+            totalWeight += eligibility.kilogram().doubleValue();
         }
 
         if (totalWeight > MAX_WEIGHT_KG) {
@@ -101,6 +119,7 @@ public class PengirimanServiceImpl implements PengirimanService {
         Pengiriman pengiriman = Pengiriman.builder()
             .driverId(request.getDriverId())
             .mandorId(mandorId)
+                .kebunCode(kebunCode)
                 .status(StatusPengiriman.MEMUAT)
                 .totalWeightKg(totalWeight)
                 .items(new ArrayList<>())
@@ -108,26 +127,24 @@ public class PengirimanServiceImpl implements PengirimanService {
 
         // Create pengiriman items
         for (AssignDriverRequest.HarvestItemDto item : request.getHarvestItems()) {
+            HarvestTransportEligibilityResponse eligibility = eligibilityByHarvestId.get(item.getHarvestId());
             PengirimanItem pengirimanItem = PengirimanItem.builder()
                     .shipment(pengiriman)
                     .harvestId(item.getHarvestId())
-                    .weightKg(item.getWeightKg())
+                    .weightKg(eligibility.kilogram().doubleValue())
                     .build();
             pengiriman.getItems().add(pengirimanItem);
         }
 
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try {
-            eventPublisher.publish("pengiriman-assigned", saved);
-        } catch (Exception ignored) {
-            // best-effort publish
-        }
+        publishEvent("pengiriman-assigned", saved);
         return saved;
     }
 
     @Override
     @Transactional
     public Pengiriman updateStatusPengiriman(Long pengirimanId, Long driverId, StatusPengiriman newStatus) {
+        ensureUserHasRole(driverId, ROLE_SUPIR, "Driver not found");
         if (newStatus == null) {
             throw new IllegalArgumentException("New status is required");
         }
@@ -153,12 +170,13 @@ public class PengirimanServiceImpl implements PengirimanService {
 
     @Override
     public List<Pengiriman> getPengirimanByDriver(Long driverId) {
+        ensureUserHasRole(driverId, ROLE_SUPIR, "Driver not found");
         return pengirimanRepository.findByDriverIdAndStatusIn(driverId, ACTIVE_SHIPMENT_STATUSES);
     }
 
     @Override
     public List<Pengiriman> getPengirimanByDriverForMandor(Long mandorId, Long driverId) {
-        ensureUserExists(mandorId, "Mandor not found");
+        ensureUserHasRole(mandorId, ROLE_MANDOR, "Mandor not found");
 
         return pengirimanRepository.findByMandorIdAndDriverIdAndStatusIn(
                 mandorId,
@@ -169,13 +187,13 @@ public class PengirimanServiceImpl implements PengirimanService {
 
     @Override
     public List<Pengiriman> getPengirimanHistoryByDriver(Long driverId, LocalDate startDate, LocalDate endDate) {
-        ensureUserExists(driverId, "Driver not found");
+        ensureUserHasRole(driverId, ROLE_SUPIR, "Driver not found");
 
             validateDateRange(startDate, endDate);
 
             return pengirimanRepository.findDriverHistory(
                 driverId,
-                DRIVER_HISTORY_STATUSES,
+                SUPIR_HISTORY_STATUSES,
                 toStartDateTime(startDate),
                 toEndDateTime(endDate)
             );
@@ -183,6 +201,7 @@ public class PengirimanServiceImpl implements PengirimanService {
 
     @Override
     public List<Pengiriman> getOngoingPengiriman(Long mandorId) {
+        ensureUserHasRole(mandorId, ROLE_MANDOR, "Mandor not found");
         return pengirimanRepository.findByMandorIdAndStatusIn(mandorId, ACTIVE_SHIPMENT_STATUSES);
     }
 
@@ -192,11 +211,13 @@ public class PengirimanServiceImpl implements PengirimanService {
     }
 
     @Override
-    public List<Pengiriman> getApprovedPengirimanForAdmin(String mandorName, LocalDate date) {
+    public List<Pengiriman> getApprovedPengirimanForAdmin(Long adminId, String mandorName, LocalDate date) {
+        ensureUserHasRole(adminId, ROLE_ADMIN, "Admin not found");
+
         String normalizedMandorName = normalizeName(mandorName);
         List<Long> mandorIds = null;
         if (normalizedMandorName != null) {
-            List<UserSummary> matches = userClient.findByUsernameContainingIgnoreCase(normalizedMandorName);
+            List<UserSummary> matches = userClient.findByNameAndRole(normalizedMandorName, ROLE_MANDOR);
             if (matches.isEmpty()) {
                 return List.of();
             }
@@ -216,25 +237,29 @@ public class PengirimanServiceImpl implements PengirimanService {
 
     @Override
     public List<UserSummary> getAvailableDriversForMandor(Long mandorId, String searchName) {
-        UserSummary mandor = ensureUserExists(mandorId, "Mandor not found");
+        UserSummary mandor = ensureUserHasRole(mandorId, ROLE_MANDOR, "Mandor not found");
+        KebunDetailResponse kebunDetail = getActiveMandorKebunDetail(mandorId);
+        Set<String> assignedSupirIds = new HashSet<>(kebunDetail.supirIds() == null
+                ? List.of()
+                : kebunDetail.supirIds());
 
         List<UserSummary> users;
         if (searchName == null || searchName.isBlank()) {
-            users = userClient.findAll();
+            users = userClient.findByRole(ROLE_SUPIR);
         } else {
-            users = userClient.findByUsernameContainingIgnoreCase(searchName.trim());
+            users = userClient.findByNameAndRole(searchName.trim(), ROLE_SUPIR);
         }
 
-        // Temporary filter nunggu role dan perkebunun diimplementasi.
         return users.stream()
             .filter(user -> !user.getId().equals(mandor.getId()))
+                .filter(user -> assignedSupirIds.contains(String.valueOf(user.getId())))
                 .toList();
     }
 
     @Override
     @Transactional
     public Pengiriman approveByMandor(Long pengirimanId, Long mandorId) {
-        ensureUserExists(mandorId, "Mandor not found");
+        ensureUserHasRole(mandorId, ROLE_MANDOR, "Mandor not found");
 
         Pengiriman pengiriman = pengirimanRepository.findById(pengirimanId)
                 .orElseThrow(() -> new IllegalArgumentException("Pengiriman not found"));
@@ -250,23 +275,20 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setRejectionReason(null);
         pengiriman.setAcknowledgedWeightKg(pengiriman.getTotalWeightKg());
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try {
-            eventPublisher.publish("pengiriman-approved-mandor", saved);
-            eventPublisher.publish("payroll-driver-requested",
+        publishEvent("pengiriman-approved-mandor", saved);
+        publishEvent("payroll-driver-requested",
                 new id.ac.ui.cs.advprog.bemanagementpengiriman.events.PayrollEvent(
                     saved.getDriverId(),
-                    "DRIVER",
-                    saved.getId(),
-                    saved.getTotalWeightKg(),
-                    null));
-        } catch (Exception ignored) {}
+                    ROLE_SUPIR,
+                    saved.getTotalWeightKg()));
+        requestPayroll(mandorId, saved.getDriverId(), ROLE_SUPIR, saved.getTotalWeightKg());
         return saved;
     }
 
     @Override
     @Transactional
     public Pengiriman rejectByMandor(Long pengirimanId, Long mandorId, String rejectionReason) {
-        ensureUserExists(mandorId, "Mandor not found");
+        ensureUserHasRole(mandorId, ROLE_MANDOR, "Mandor not found");
 
         Pengiriman pengiriman = pengirimanRepository.findById(pengirimanId)
                 .orElseThrow(() -> new IllegalArgumentException("Pengiriman not found"));
@@ -284,14 +306,14 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setRejectionReason(validatedReason);
         pengiriman.setAcknowledgedWeightKg(null);
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try { eventPublisher.publish("pengiriman-rejected-mandor", saved); } catch (Exception ignored) {}
+        publishEvent("pengiriman-rejected-mandor", saved);
         return saved;
     }
 
     @Override
     @Transactional
     public Pengiriman approveByAdmin(Long pengirimanId, Long adminId) {
-        ensureUserExists(adminId, "Admin not found");
+        ensureUserHasRole(adminId, ROLE_ADMIN, "Admin not found");
 
         Pengiriman pengiriman = pengirimanRepository.findById(pengirimanId)
                 .orElseThrow(() -> new IllegalArgumentException("Pengiriman not found"));
@@ -304,23 +326,20 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setRejectionReason(null);
         pengiriman.setAcknowledgedWeightKg(pengiriman.getTotalWeightKg());
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try {
-            eventPublisher.publish("pengiriman-approved-admin", saved);
-            eventPublisher.publish("payroll-mandor-requested",
+        publishEvent("pengiriman-approved-admin", saved);
+        publishEvent("payroll-mandor-requested",
                 new id.ac.ui.cs.advprog.bemanagementpengiriman.events.PayrollEvent(
                     saved.getMandorId(),
-                    "MANDOR",
-                    saved.getId(),
-                    saved.getAcknowledgedWeightKg(),
-                    null));
-        } catch (Exception ignored) {}
+                    ROLE_MANDOR,
+                    saved.getAcknowledgedWeightKg()));
+        requestPayroll(adminId, saved.getMandorId(), ROLE_MANDOR, saved.getAcknowledgedWeightKg());
         return saved;
     }
 
     @Override
     @Transactional
     public Pengiriman rejectByAdmin(Long pengirimanId, Long adminId, String rejectionReason) {
-        ensureUserExists(adminId, "Admin not found");
+        ensureUserHasRole(adminId, ROLE_ADMIN, "Admin not found");
 
         Pengiriman pengiriman = pengirimanRepository.findById(pengirimanId)
                 .orElseThrow(() -> new IllegalArgumentException("Pengiriman not found"));
@@ -335,7 +354,7 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setRejectionReason(validatedReason);
         pengiriman.setAcknowledgedWeightKg(null);
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try { eventPublisher.publish("pengiriman-rejected-admin", saved); } catch (Exception ignored) {}
+        publishEvent("pengiriman-rejected-admin", saved);
         return saved;
     }
 
@@ -345,7 +364,7 @@ public class PengirimanServiceImpl implements PengirimanService {
                                            Long adminId,
                                            Double acknowledgedWeightKg,
                                            String rejectionReason) {
-        ensureUserExists(adminId, "Admin not found");
+        ensureUserHasRole(adminId, ROLE_ADMIN, "Admin not found");
 
         Pengiriman pengiriman = pengirimanRepository.findById(pengirimanId)
                 .orElseThrow(() -> new IllegalArgumentException("Pengiriman not found"));
@@ -369,16 +388,13 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setAcknowledgedWeightKg(acknowledgedWeightKg);
         pengiriman.setRejectionReason(validatedReason);
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try {
-            eventPublisher.publish("pengiriman-partial-rejected-admin", saved);
-            eventPublisher.publish("payroll-mandor-requested",
+        publishEvent("pengiriman-partial-rejected-admin", saved);
+        publishEvent("payroll-mandor-requested",
                 new id.ac.ui.cs.advprog.bemanagementpengiriman.events.PayrollEvent(
                     saved.getMandorId(),
-                    "MANDOR",
-                    saved.getId(),
-                    saved.getAcknowledgedWeightKg(),
-                    null));
-        } catch (Exception ignored) {}
+                    ROLE_MANDOR,
+                    saved.getAcknowledgedWeightKg()));
+        requestPayroll(adminId, saved.getMandorId(), ROLE_MANDOR, saved.getAcknowledgedWeightKg());
         return saved;
     }
 
@@ -386,6 +402,30 @@ public class PengirimanServiceImpl implements PengirimanService {
     public Pengiriman getPengirimanById(Long pengirimanId) {
         return pengirimanRepository.findById(pengirimanId)
                 .orElseThrow(() -> new IllegalArgumentException("Pengiriman not found"));
+    }
+
+    @Override
+    public Pengiriman getPengirimanByIdForUser(Long pengirimanId, Long userId, String role) {
+        Pengiriman pengiriman = getPengirimanById(pengirimanId);
+        if (isRole(role, ROLE_ADMIN)) {
+            ensureUserHasRole(userId, ROLE_ADMIN, "Admin not found");
+            return pengiriman;
+        }
+        if (isRole(role, ROLE_MANDOR)) {
+            ensureUserHasRole(userId, ROLE_MANDOR, "Mandor not found");
+            if (!pengiriman.getMandorId().equals(userId)) {
+                throw new SecurityException("Mandor is not assigned to this pengiriman");
+            }
+            return pengiriman;
+        }
+        if (isRole(role, ROLE_SUPIR)) {
+            ensureUserHasRole(userId, ROLE_SUPIR, "Driver not found");
+            if (!pengiriman.getDriverId().equals(userId)) {
+                throw new SecurityException("Supir is not assigned to this pengiriman");
+            }
+            return pengiriman;
+        }
+        throw new SecurityException("Only ADMIN, MANDOR, or SUPIR can access this endpoint");
     }
 
     private void validateAssignDriverRequest(AssignDriverRequest request) {
@@ -408,6 +448,38 @@ public class PengirimanServiceImpl implements PengirimanService {
                 .orElseThrow(() -> new IllegalArgumentException(message));
     }
 
+    private UserSummary ensureUserHasRole(Long userId, String expectedRole, String message) {
+        UserSummary user = ensureUserExists(userId, message);
+        if (user.getRole() == null || !user.getRole().equalsIgnoreCase(expectedRole)) {
+            throw new IllegalArgumentException(message);
+        }
+        return user;
+    }
+
+    private boolean isRole(String actualRole, String expectedRole) {
+        return actualRole != null && actualRole.equalsIgnoreCase(expectedRole);
+    }
+
+    private String ensureDriverAssignedToMandorKebun(Long mandorId, Long driverId) {
+        KebunDetailResponse kebunDetail = getActiveMandorKebunDetail(mandorId);
+        boolean driverAssignedToSameKebun = kebunDetail.supirIds() != null
+                && kebunDetail.supirIds().contains(String.valueOf(driverId));
+        if (!driverAssignedToSameKebun) {
+            throw new SecurityException("Driver is not assigned to the same kebun as mandor");
+        }
+        return kebunDetail.code();
+    }
+
+    private KebunDetailResponse getActiveMandorKebunDetail(Long mandorId) {
+        MandorKebunAssignmentResponse assignment = kebunClient.getMandorKebunAssignment(mandorId)
+                .orElseThrow(() -> new IllegalArgumentException("Mandor kebun assignment not found"));
+        if (!assignment.active() || assignment.kebunCode() == null || assignment.kebunCode().isBlank()) {
+            throw new IllegalStateException("Mandor is not assigned to a kebun");
+        }
+        return kebunClient.getKebunDetail(assignment.kebunCode())
+                .orElseThrow(() -> new IllegalArgumentException("Kebun detail not found"));
+    }
+
     private String normalizeName(String name) {
         if (name == null) {
             return null;
@@ -426,6 +498,22 @@ public class PengirimanServiceImpl implements PengirimanService {
     private void validateDateRange(LocalDate startDate, LocalDate endDate) {
         if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
             throw new IllegalArgumentException("End date must be after or equal to start date");
+        }
+    }
+
+    private void publishEvent(String topic, Object event) {
+        try {
+            eventPublisher.publish(topic, event);
+        } catch (Exception ignored) {
+            // Best-effort integration event; domain state has already been persisted.
+        }
+    }
+
+    private void requestPayroll(Long actorId, Long userId, String role, Double kilogram) {
+        try {
+            paymentClient.requestPayroll(actorId, userId, role, kilogram);
+        } catch (Exception ignored) {
+            // Payroll creation is an integration side effect and should not roll back shipment approval.
         }
     }
 
