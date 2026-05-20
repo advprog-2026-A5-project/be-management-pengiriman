@@ -6,6 +6,7 @@
 
     import java.time.LocalDateTime;
     import java.util.List;
+    import java.util.UUID;
 
     import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,7 +19,7 @@
             Long driverId = 2L;
             Long mandorId = 1L;
 
-            long harvestId = 123L;
+            UUID harvestId = UUID.randomUUID();
             PengirimanItem item = PengirimanItem.builder()
                     .harvestId(harvestId)
                     .weightKg(150.0)
