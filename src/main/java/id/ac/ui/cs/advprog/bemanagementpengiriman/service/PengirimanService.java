@@ -16,7 +16,7 @@ public interface PengirimanService {
     List<Pengiriman> getPengirimanHistoryByDriver(Long driverId, LocalDate startDate, LocalDate endDate);
     List<Pengiriman> getOngoingPengiriman(Long mandorId);
     List<Pengiriman> getPengirimanByStatus(StatusPengiriman status);
-    List<Pengiriman> getApprovedPengirimanForAdmin(String mandorName, LocalDate date);
+    List<Pengiriman> getApprovedPengirimanForAdmin(Long adminId, String mandorName, LocalDate date);
     List<UserSummary> getAvailableDriversForMandor(Long mandorId, String searchName);
     Pengiriman approveByMandor(Long pengirimanId, Long mandorId);
     Pengiriman rejectByMandor(Long pengirimanId, Long mandorId, String rejectionReason);
@@ -24,4 +24,5 @@ public interface PengirimanService {
     Pengiriman rejectByAdmin(Long pengirimanId, Long adminId, String rejectionReason);
     Pengiriman partialRejectByAdmin(Long pengirimanId, Long adminId, Double acknowledgedWeightKg, String rejectionReason);
     Pengiriman getPengirimanById(Long pengirimanId);
+    Pengiriman getPengirimanByIdForUser(Long pengirimanId, Long userId, String role);
 }
