@@ -565,7 +565,7 @@ class PengirimanServiceImplTest {
         List<UserSummary> result = pengirimanService.getAvailableDriversForMandor(1L, "   ");
 
         assertEquals(1, result.size());
-        assertEquals(2L, result.get(0).getId());
+        assertEquals(2L, result.getFirst().getId());
     }
 
     @Test
