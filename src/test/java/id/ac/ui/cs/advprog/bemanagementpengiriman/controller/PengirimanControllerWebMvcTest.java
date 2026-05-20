@@ -68,6 +68,27 @@ class PengirimanControllerWebMvcTest {
     }
 
     @Test
+    void assignDriver_rejectsMissingDriverId() throws Exception {
+        UserPrincipal principal = new UserPrincipal(1L, "MANDOR");
+        var auth = new UsernamePasswordAuthenticationToken(
+                principal,
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_MANDOR"))
+        );
+
+        AssignDriverRequest request = AssignDriverRequest.builder()
+                .driverId(null)
+                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(10L, 100.0)))
+                .build();
+
+        mockMvc.perform(post("/api/pengiriman/assign")
+                        .with(authentication(auth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void updateStatus_returnsOkForDriver() throws Exception {
         UserPrincipal principal = new UserPrincipal(2L, "DRIVER");
         var auth = new UsernamePasswordAuthenticationToken(
@@ -87,6 +108,24 @@ class PengirimanControllerWebMvcTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void updateStatus_rejectsNullStatus() throws Exception {
+        UserPrincipal principal = new UserPrincipal(2L, "DRIVER");
+        var auth = new UsernamePasswordAuthenticationToken(
+                principal,
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_DRIVER"))
+        );
+
+        UpdateStatusPengirimanRequest request = new UpdateStatusPengirimanRequest(null);
+
+        mockMvc.perform(patch("/api/pengiriman/10/status")
+                        .with(authentication(auth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -123,6 +162,24 @@ class PengirimanControllerWebMvcTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectByMandor_rejectsBlankReason() throws Exception {
+        UserPrincipal principal = new UserPrincipal(1L, "MANDOR");
+        var auth = new UsernamePasswordAuthenticationToken(
+                principal,
+                null,
+                List.of(new SimpleGrantedAuthority("ROLE_MANDOR"))
+        );
+
+        MandorRejectionRequest request = new MandorRejectionRequest("   ");
+
+        mockMvc.perform(patch("/api/pengiriman/7/mandor/reject")
+                        .with(authentication(auth))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
