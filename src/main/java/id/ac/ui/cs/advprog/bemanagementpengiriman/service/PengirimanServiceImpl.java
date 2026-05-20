@@ -1,5 +1,6 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.service;
 
+import id.ac.ui.cs.advprog.bemanagementpengiriman.client.HarvestClient;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.client.UserClient;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.AssignDriverRequest;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.UserSummary;
@@ -41,6 +42,7 @@ public class PengirimanServiceImpl implements PengirimanService {
 
     private final PengirimanRepository pengirimanRepository;
     private final UserClient userClient;
+    private final HarvestClient harvestClient;
     private final id.ac.ui.cs.advprog.bemanagementpengiriman.events.EventPublisher eventPublisher;
 
     @Override
@@ -70,6 +72,10 @@ public class PengirimanServiceImpl implements PengirimanService {
             }
             if (!harvestIdsInRequest.add(item.getHarvestId())) {
                 throw new IllegalArgumentException("Duplicate harvest item in request");
+            }
+
+            if (!harvestClient.isApprovedHarvest(item.getHarvestId())) {
+                throw new IllegalArgumentException("Harvest item is not approved");
             }
 
             long activeShipmentCount = pengirimanRepository.countActiveShipmentByHarvestId(
@@ -244,7 +250,16 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setRejectionReason(null);
         pengiriman.setAcknowledgedWeightKg(pengiriman.getTotalWeightKg());
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try { eventPublisher.publish("pengiriman-approved-mandor", saved); } catch (Exception ignored) {}
+        try {
+            eventPublisher.publish("pengiriman-approved-mandor", saved);
+            eventPublisher.publish("payroll-driver-requested",
+                new id.ac.ui.cs.advprog.bemanagementpengiriman.events.PayrollEvent(
+                    saved.getDriverId(),
+                    "DRIVER",
+                    saved.getId(),
+                    saved.getTotalWeightKg(),
+                    null));
+        } catch (Exception ignored) {}
         return saved;
     }
 
@@ -289,7 +304,16 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setRejectionReason(null);
         pengiriman.setAcknowledgedWeightKg(pengiriman.getTotalWeightKg());
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try { eventPublisher.publish("pengiriman-approved-admin", saved); } catch (Exception ignored) {}
+        try {
+            eventPublisher.publish("pengiriman-approved-admin", saved);
+            eventPublisher.publish("payroll-mandor-requested",
+                new id.ac.ui.cs.advprog.bemanagementpengiriman.events.PayrollEvent(
+                    saved.getMandorId(),
+                    "MANDOR",
+                    saved.getId(),
+                    saved.getAcknowledgedWeightKg(),
+                    null));
+        } catch (Exception ignored) {}
         return saved;
     }
 
@@ -345,7 +369,16 @@ public class PengirimanServiceImpl implements PengirimanService {
         pengiriman.setAcknowledgedWeightKg(acknowledgedWeightKg);
         pengiriman.setRejectionReason(validatedReason);
         Pengiriman saved = pengirimanRepository.save(pengiriman);
-        try { eventPublisher.publish("pengiriman-partial-rejected-admin", saved); } catch (Exception ignored) {}
+        try {
+            eventPublisher.publish("pengiriman-partial-rejected-admin", saved);
+            eventPublisher.publish("payroll-mandor-requested",
+                new id.ac.ui.cs.advprog.bemanagementpengiriman.events.PayrollEvent(
+                    saved.getMandorId(),
+                    "MANDOR",
+                    saved.getId(),
+                    saved.getAcknowledgedWeightKg(),
+                    null));
+        } catch (Exception ignored) {}
         return saved;
     }
 
