@@ -1,9 +1,12 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.service;
 
+import id.ac.ui.cs.advprog.bemanagementpengiriman.client.HarvestClient;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.client.UserClient;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.AssignDriverRequest;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.UserSummary;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.enums.StatusPengiriman;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.events.EventPublisher;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.events.PayrollEvent;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.model.Pengiriman;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.repository.PengirimanRepository;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,12 @@ class PengirimanServiceImplTest {
     @Mock
     private UserClient userClient;
 
+        @Mock
+        private HarvestClient harvestClient;
+
+        @Mock
+        private EventPublisher eventPublisher;
+
     @InjectMocks
     private PengirimanServiceImpl pengirimanService;
 
@@ -62,6 +71,7 @@ class PengirimanServiceImplTest {
 
         when(userClient.findById(1L)).thenReturn(Optional.of(new UserSummary(1L, "mandor")));
         when(userClient.findById(2L)).thenReturn(Optional.of(new UserSummary(2L, "driver")));
+        when(harvestClient.isApprovedHarvest(duplicateHarvestId)).thenReturn(true);
         when(pengirimanRepository.countActiveShipmentByHarvestId(eq(duplicateHarvestId), anyCollection()))
                 .thenReturn(0L);
 
@@ -87,6 +97,7 @@ class PengirimanServiceImplTest {
 
         when(userClient.findById(1L)).thenReturn(Optional.of(new UserSummary(1L, "mandor")));
         when(userClient.findById(2L)).thenReturn(Optional.of(new UserSummary(2L, "driver")));
+        when(harvestClient.isApprovedHarvest(harvestId)).thenReturn(true);
         when(pengirimanRepository.countActiveShipmentByHarvestId(eq(harvestId), anyCollection()))
                 .thenReturn(1L);
 
@@ -144,6 +155,7 @@ class PengirimanServiceImplTest {
         UserSummary mandor = new UserSummary(1L, "mandor.satu");
         Pengiriman pengiriman = Pengiriman.builder()
                 .id(10L)
+                                .driverId(2L)
                 .mandorId(1L)
                 .status(StatusPengiriman.TIBA_DI_TUJUAN)
                 .totalWeightKg(250.0)
@@ -158,6 +170,10 @@ class PengirimanServiceImplTest {
         assertEquals(StatusPengiriman.APPROVED_MANDOR, result.getStatus());
         assertEquals(250.0, result.getAcknowledgedWeightKg());
         assertNull(result.getRejectionReason());
+
+                ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+                verify(eventPublisher, times(2)).publish(any(), eventCaptor.capture());
+                assertTrue(eventCaptor.getAllValues().stream().anyMatch(ev -> ev instanceof PayrollEvent));
     }
 
     @Test
@@ -229,6 +245,8 @@ class PengirimanServiceImplTest {
 
         when(userClient.findById(1L)).thenReturn(Optional.of(mandor));
         when(userClient.findById(2L)).thenReturn(Optional.of(driver));
+        when(harvestClient.isApprovedHarvest(harvestId1)).thenReturn(true);
+        when(harvestClient.isApprovedHarvest(harvestId2)).thenReturn(true);
         when(pengirimanRepository.countActiveShipmentByHarvestId(eq(harvestId1), anyCollection())).thenReturn(0L);
         when(pengirimanRepository.countActiveShipmentByHarvestId(eq(harvestId2), anyCollection())).thenReturn(0L);
         when(pengirimanRepository.save(any(Pengiriman.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -301,6 +319,27 @@ class PengirimanServiceImplTest {
         assertEquals("Each harvest item weight must be greater than 0", ex.getMessage());
         verify(pengirimanRepository, never()).save(any(Pengiriman.class));
     }
+
+        @Test
+        void assignDriver_shouldRejectWhenHarvestNotApproved() {
+                long harvestId = 9001L;
+                AssignDriverRequest request = AssignDriverRequest.builder()
+                                .driverId(2L)
+                                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(harvestId, 100.0)))
+                                .build();
+
+                when(userClient.findById(1L)).thenReturn(Optional.of(new UserSummary(1L, "mandor")));
+                when(userClient.findById(2L)).thenReturn(Optional.of(new UserSummary(2L, "driver")));
+                when(harvestClient.isApprovedHarvest(harvestId)).thenReturn(false);
+
+                IllegalArgumentException ex = assertThrows(
+                                IllegalArgumentException.class,
+                                () -> pengirimanService.assignDriver(1L, request)
+                );
+
+                assertEquals("Harvest item is not approved", ex.getMessage());
+                verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+        }
 
     @Test
     void updateStatusPengiriman_shouldUpdateWhenTransitionIsValid() {
@@ -534,6 +573,7 @@ class PengirimanServiceImplTest {
         UserSummary admin = new UserSummary(99L, "admin");
         Pengiriman pengiriman = Pengiriman.builder()
                 .id(400L)
+                                .mandorId(1L)
                 .status(StatusPengiriman.APPROVED_MANDOR)
                 .totalWeightKg(350.0)
                 .rejectionReason("old")
@@ -548,6 +588,10 @@ class PengirimanServiceImplTest {
         assertEquals(StatusPengiriman.APPROVED_ADMIN, result.getStatus());
         assertEquals(350.0, result.getAcknowledgedWeightKg());
         assertNull(result.getRejectionReason());
+
+                ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+                verify(eventPublisher, times(2)).publish(any(), eventCaptor.capture());
+                assertTrue(eventCaptor.getAllValues().stream().anyMatch(ev -> ev instanceof PayrollEvent));
     }
 
     @Test
@@ -575,6 +619,7 @@ class PengirimanServiceImplTest {
         UserSummary admin = new UserSummary(99L, "admin");
         Pengiriman pengiriman = Pengiriman.builder()
                 .id(402L)
+                                .mandorId(5L)
                 .status(StatusPengiriman.APPROVED_MANDOR)
                 .totalWeightKg(300.0)
                 .build();
@@ -588,6 +633,10 @@ class PengirimanServiceImplTest {
         assertEquals(StatusPengiriman.PARTIALLY_REJECTED_ADMIN, result.getStatus());
         assertEquals(250.0, result.getAcknowledgedWeightKg());
         assertEquals("Sebagian rusak", result.getRejectionReason());
+
+                ArgumentCaptor<Object> eventCaptor = ArgumentCaptor.forClass(Object.class);
+                verify(eventPublisher, times(2)).publish(any(), eventCaptor.capture());
+                assertTrue(eventCaptor.getAllValues().stream().anyMatch(ev -> ev instanceof PayrollEvent));
     }
 
     @Test
