@@ -9,8 +9,8 @@ import lombok.Setter;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -31,9 +31,6 @@ public class AssignDriverRequest {
     @AllArgsConstructor
     public static class HarvestItemDto {
         @NotNull
-        private Long harvestId;
-
-        @Positive
-        private double weightKg;
+        private UUID harvestId;
     }
 }
