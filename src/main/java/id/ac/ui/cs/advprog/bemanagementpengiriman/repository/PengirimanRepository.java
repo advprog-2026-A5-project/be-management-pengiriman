@@ -56,7 +56,7 @@ public interface PengirimanRepository extends JpaRepository<Pengiriman, Long> {
                     FROM Pengiriman p
                     JOIN p.items i
                     WHERE i.harvestId = :harvestId
-                    AND p.status IN :statuses """)
+                    AND p.status IN :statuses""")
     long countActiveShipmentByHarvestId(
             @Param("harvestId") UUID harvestId,
             @Param("statuses") Collection<StatusPengiriman> statuses
