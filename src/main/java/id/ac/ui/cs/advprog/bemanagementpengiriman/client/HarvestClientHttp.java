@@ -1,13 +1,14 @@
 package id.ac.ui.cs.advprog.bemanagementpengiriman.client;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.HarvestTransportEligibilityResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+
+import java.util.Optional;
+import java.util.UUID;
 
 @Component
 public class HarvestClientHttp implements HarvestClient {
@@ -22,28 +23,21 @@ public class HarvestClientHttp implements HarvestClient {
     }
 
     @Override
-    public boolean isApprovedHarvest(Long harvestId) {
+    public Optional<HarvestTransportEligibilityResponse> getTransportEligibility(UUID harvestId) {
         if (harvestId == null) {
-            return false;
+            return Optional.empty();
         }
         try {
-            HarvestStatusResponse response = restClient.get()
-                    .uri("/harvests/{id}", harvestId)
+            HarvestTransportEligibilityResponse response = restClient.get()
+                    .uri("/internal/harvests/{id}/transport-eligibility", harvestId)
                     .retrieve()
-                    .body(HarvestStatusResponse.class);
-            return response != null && Boolean.TRUE.equals(response.getApproved());
+                    .body(HarvestTransportEligibilityResponse.class);
+            return Optional.ofNullable(response);
         } catch (RestClientResponseException ex) {
             if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
-                return false;
+                return Optional.empty();
             }
             throw ex;
         }
-    }
-
-    @Getter
-    @NoArgsConstructor
-    @AllArgsConstructor
-    private static class HarvestStatusResponse {
-        private Boolean approved;
     }
 }
