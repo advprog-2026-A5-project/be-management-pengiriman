@@ -9,7 +9,7 @@ public interface UserClient {
 
     Optional<UserSummary> findById(Long id);
 
-    List<UserSummary> findByUsernameContainingIgnoreCase(String username);
+    List<UserSummary> findByNameAndRole(String name, String role);
 
-    List<UserSummary> findAll();
+    List<UserSummary> findByRole(String role);
 }

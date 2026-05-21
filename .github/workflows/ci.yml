@@ -44,7 +44,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: spring-boot-jar
-          path: build/libs/*.jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-plain.jar
 
   sonarcloud:
     name: SonarCloud
@@ -76,3 +78,92 @@ jobs:
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
           SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
 
+  deploy-aws:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-test
+      - sonarcloud
+
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Download Spring Boot JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: spring-boot-jar
+          path: build/libs
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+
+      - name: Create deployment env file
+        env:
+          PENGIRIMAN_DB_URL: ${{ secrets.PENGIRIMAN_DB_URL }}
+          PENGIRIMAN_DB_USERNAME: ${{ secrets.PENGIRIMAN_DB_USERNAME }}
+          PENGIRIMAN_DB_PASSWORD: ${{ secrets.PENGIRIMAN_DB_PASSWORD }}
+          PENGIRIMAN_CORS_ALLOWED_ORIGINS: ${{ secrets.PENGIRIMAN_CORS_ALLOWED_ORIGINS }}
+          USER_SERVICE_BASE_URL: ${{ secrets.USER_SERVICE_BASE_URL }}
+          USER_SERVICE_AUTH_TOKEN: ${{ secrets.USER_SERVICE_AUTH_TOKEN }}
+          HARVEST_SERVICE_BASE_URL: ${{ secrets.HARVEST_SERVICE_BASE_URL }}
+          PAYMENT_SERVICE_BASE_URL: ${{ secrets.PAYMENT_SERVICE_BASE_URL }}
+          KEBUN_SERVICE_BASE_URL: ${{ secrets.KEBUN_SERVICE_BASE_URL }}
+          KEBUN_SERVICE_AUTH_TOKEN: ${{ secrets.KEBUN_SERVICE_AUTH_TOKEN }}
+        run: |
+          for required in PENGIRIMAN_DB_URL PENGIRIMAN_DB_USERNAME PENGIRIMAN_DB_PASSWORD; do
+            if [ -z "${!required}" ]; then
+              echo "::error::Missing GitHub Secret: ${required}"
+              exit 1
+            fi
+          done
+
+          python3 - <<'PY'
+          import os
+          import shlex
+
+          values = {
+              "SERVER_PORT": "8083",
+              "DB_URL": os.environ["PENGIRIMAN_DB_URL"],
+              "DB_USERNAME": os.environ["PENGIRIMAN_DB_USERNAME"],
+              "DB_PASSWORD": os.environ["PENGIRIMAN_DB_PASSWORD"],
+              "CORS_ALLOWED_ORIGINS": os.environ.get("PENGIRIMAN_CORS_ALLOWED_ORIGINS", ""),
+              "USER_SERVICE_BASE_URL": os.environ.get("USER_SERVICE_BASE_URL", ""),
+              "USER_SERVICE_AUTH_TOKEN": os.environ.get("USER_SERVICE_AUTH_TOKEN", ""),
+              "HARVEST_SERVICE_BASE_URL": os.environ.get("HARVEST_SERVICE_BASE_URL", ""),
+              "PAYMENT_SERVICE_BASE_URL": os.environ.get("PAYMENT_SERVICE_BASE_URL", ""),
+              "KEBUN_SERVICE_BASE_URL": os.environ.get("KEBUN_SERVICE_BASE_URL", ""),
+              "KEBUN_SERVICE_AUTH_TOKEN": os.environ.get("KEBUN_SERVICE_AUTH_TOKEN", ""),
+          }
+
+          with open("deployment.env", "w", encoding="utf-8") as env_file:
+              for key, value in values.items():
+                  if value:
+                      env_file.write(f"export {key}={shlex.quote(value)}\n")
+          PY
+
+      - name: Prepare app directory on EC2
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p /opt/be-management-pengiriman"
+
+      - name: Copy JAR to EC2
+        run: |
+          JAR_FILE=$(find build/libs -name "*.jar" ! -name "*-plain.jar" | head -n 1)
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem "$JAR_FILE" ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/be-management-pengiriman/app.jar
+
+      - name: Copy env file to EC2
+        run: |
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem deployment.env ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/be-management-pengiriman/.env
+
+      - name: Restart Spring Boot app
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            pkill -f 'java -jar /opt/be-management-pengiriman/app.jar' || true
+            chmod 600 /opt/be-management-pengiriman/.env
+            . /opt/be-management-pengiriman/.env
+            nohup java -jar /opt/be-management-pengiriman/app.jar > /opt/be-management-pengiriman/app.log 2>&1 &
+            sleep 8
+            tail -n 80 /opt/be-management-pengiriman/app.log
+          EOF

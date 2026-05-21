@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: be-management-pengiriman-postgres
+    environment:
+      POSTGRES_DB: pengiriman_db
+      POSTGRES_USER: pengiriman_user
+      POSTGRES_PASSWORD: pengiriman_pass
+    ports:
+      - "55433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pengiriman_user -d pengiriman_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

@@ -6,7 +6,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -14,7 +18,11 @@ import java.util.List;
 @AllArgsConstructor
 @Builder
 public class AssignDriverRequest {
+    @NotNull
     private Long driverId;
+
+    @NotEmpty
+    @Valid
     private List<HarvestItemDto> harvestItems;
 
     @Getter
@@ -22,7 +30,7 @@ public class AssignDriverRequest {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class HarvestItemDto {
-        private Long harvestId;
-        private double weightKg;
+        @NotNull
+        private UUID harvestId;
     }
 }

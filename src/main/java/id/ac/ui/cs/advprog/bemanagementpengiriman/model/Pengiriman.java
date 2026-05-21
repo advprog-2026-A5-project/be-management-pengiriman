@@ -26,6 +26,9 @@ public class Pengiriman {
     @Column(name = "mandor_id", nullable = false)
     private Long mandorId;
 
+    @Column(name = "kebun_code")
+    private String kebunCode;
+
     @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PengirimanItem> items;
 

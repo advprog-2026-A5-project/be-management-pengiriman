@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,8 +34,7 @@ import java.util.List;
 public class PengirimanController {
 
     private static final String ROLE_MANDOR = "MANDOR";
-    private static final String ROLE_DRIVER = "DRIVER";
-    private static final String ROLE_ADMIN = "ADMIN";
+    private static final String ROLE_SUPIR = "SUPIR";
 
     private final PengirimanService pengirimanService;
 
@@ -58,7 +56,7 @@ public class PengirimanController {
     }
 
     @PatchMapping("/{pengirimanId}/status")
-    @PreAuthorize("hasRole('DRIVER')")
+    @PreAuthorize("hasRole('SUPIR')")
     public ResponseEntity<?> updateStatus(
             @PathVariable Long pengirimanId,
             @AuthenticationPrincipal UserPrincipal principal,
@@ -82,16 +80,16 @@ public class PengirimanController {
     }
 
     @GetMapping("/driver/{driverId}")
-    @PreAuthorize("hasAnyRole('DRIVER','MANDOR')")
+    @PreAuthorize("hasAnyRole('SUPIR','MANDOR')")
     public ResponseEntity<?> getPengirimanByDriver(
             @PathVariable Long driverId,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
         try {
-            if (principal.getRole() != null && principal.getRole().equalsIgnoreCase(ROLE_DRIVER)) {
+            if (principal.getRole() != null && principal.getRole().equalsIgnoreCase(ROLE_SUPIR)) {
                 if (!driverId.equals(principal.getId())) {
                     return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                            .body("Driver can only access their own shipments");
+                            .body("Supir can only access their own shipments");
                 }
                 return ResponseEntity.ok(pengirimanService.getPengirimanByDriver(driverId));
             }
@@ -101,14 +99,14 @@ public class PengirimanController {
             }
 
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body("Only MANDOR or DRIVER can access this endpoint");
+                    .body("Only MANDOR or SUPIR can access this endpoint");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
 
     @GetMapping("/driver/{driverId}/history")
-    @PreAuthorize("hasRole('DRIVER')")
+    @PreAuthorize("hasRole('SUPIR')")
     public ResponseEntity<?> getPengirimanHistoryByDriver(
             @PathVariable Long driverId,
             @AuthenticationPrincipal UserPrincipal principal,
@@ -120,7 +118,7 @@ public class PengirimanController {
         try {
             if (!driverId.equals(principal.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body("Driver can only access their own shipment history");
+                        .body("Supir can only access their own shipment history");
             }
             return ResponseEntity.ok(pengirimanService.getPengirimanHistoryByDriver(driverId, startDate, endDate));
         } catch (IllegalArgumentException e) {
@@ -184,11 +182,12 @@ public class PengirimanController {
     @GetMapping("/admin/approved-mandor")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> getApprovedByMandorForAdmin(
+            @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam(value = "mandorName", required = false) String mandorName,
             @RequestParam(value = "date", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date
     ) {
-        return ResponseEntity.ok(pengirimanService.getApprovedPengirimanForAdmin(mandorName, date));
+        return ResponseEntity.ok(pengirimanService.getApprovedPengirimanForAdmin(principal.getId(), mandorName, date));
     }
 
     @PatchMapping("/{pengirimanId}/admin/approve")
@@ -247,21 +246,23 @@ public class PengirimanController {
     }
 
     @GetMapping("/{pengirimanId}")
-    public ResponseEntity<?> getPengirimanById(@PathVariable Long pengirimanId) {
+    @PreAuthorize("hasAnyRole('ADMIN','MANDOR','SUPIR')")
+    public ResponseEntity<?> getPengirimanById(
+            @PathVariable Long pengirimanId,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
         try {
-            return ResponseEntity.ok(pengirimanService.getPengirimanById(pengirimanId));
+            return ResponseEntity.ok(
+                    pengirimanService.getPengirimanByIdForUser(
+                            pengirimanId,
+                            principal.getId(),
+                            principal.getRole()
+                    )
+            );
         } catch (IllegalArgumentException e) {
             return ResponseEntity.notFound().build();
+        } catch (SecurityException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
         }
-    }
-
-    private void ensureRole(String actualRole, String expectedRole) {
-        if (!isRole(actualRole, expectedRole)) {
-            throw new SecurityException("Only " + expectedRole + " can access this endpoint");
-        }
-    }
-
-    private boolean isRole(String actualRole, String expectedRole) {
-        return actualRole != null && actualRole.equalsIgnoreCase(expectedRole);
     }
 }

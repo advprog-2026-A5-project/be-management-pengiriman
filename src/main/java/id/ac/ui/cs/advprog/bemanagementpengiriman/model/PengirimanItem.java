@@ -3,6 +3,8 @@ package id.ac.ui.cs.advprog.bemanagementpengiriman.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.UUID;
+
 @Entity
 @Table(name = "pengiriman_items")
 @Getter
@@ -22,7 +24,7 @@ public class PengirimanItem {
 
     // Reference to approved harvest ID from another module
     @Column(nullable = false)
-    private long harvestId;
+    private UUID harvestId;
 
     @Column(nullable = false)
     private double weightKg;
