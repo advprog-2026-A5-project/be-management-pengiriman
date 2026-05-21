@@ -8,7 +8,5 @@ import lombok.Getter;
 public class PayrollEvent {
     private final Long userId;
     private final String role;
-    private final Long pengirimanId;
-    private final Double weightKg;
-    private final String reason;
+    private final Double kilogram;
 }
