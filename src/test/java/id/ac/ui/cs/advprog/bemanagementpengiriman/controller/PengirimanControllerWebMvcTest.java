@@ -199,4 +199,18 @@ class PengirimanControllerWebMvcTest {
                         .with(authentication(auth)))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void corsPreflight_allowsFrontendOriginAndCustomHeaders() throws Exception {
+        mockMvc.perform(options("/api/pengiriman/ongoing")
+                        .header("Origin", "http://localhost:3000")
+                        .header("Access-Control-Request-Method", "GET")
+                        .header("Access-Control-Request-Headers", "X-User-Id,X-User-Role"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:3000"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andExpect(header().string("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("GET")))
+                .andExpect(header().string("Access-Control-Allow-Headers", org.hamcrest.Matchers.containsString("X-User-Id")))
+                .andExpect(header().string("Access-Control-Allow-Headers", org.hamcrest.Matchers.containsString("X-User-Role")));
+    }
 }
