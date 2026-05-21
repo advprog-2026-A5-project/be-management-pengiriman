@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.UUID;
 
 @Repository
 public interface PengirimanRepository extends JpaRepository<Pengiriman, Long> {
@@ -57,7 +58,7 @@ public interface PengirimanRepository extends JpaRepository<Pengiriman, Long> {
                     WHERE i.harvestId = :harvestId
                     AND p.status IN :statuses """)
     long countActiveShipmentByHarvestId(
-            @Param("harvestId") Long harvestId,
+            @Param("harvestId") UUID harvestId,
             @Param("statuses") Collection<StatusPengiriman> statuses
     );
 }
