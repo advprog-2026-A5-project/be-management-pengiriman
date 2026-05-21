@@ -21,6 +21,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -54,7 +55,7 @@ class PengirimanControllerWebMvcTest {
 
         AssignDriverRequest request = AssignDriverRequest.builder()
                 .driverId(2L)
-                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(10L, 100.0)))
+                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(UUID.randomUUID())))
                 .build();
 
         Pengiriman response = Pengiriman.builder().id(99L).build();
@@ -78,7 +79,7 @@ class PengirimanControllerWebMvcTest {
 
         AssignDriverRequest request = AssignDriverRequest.builder()
                 .driverId(null)
-                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(10L, 100.0)))
+                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(UUID.randomUUID())))
                 .build();
 
         mockMvc.perform(post("/api/pengiriman/assign")
@@ -90,11 +91,11 @@ class PengirimanControllerWebMvcTest {
 
     @Test
     void updateStatus_returnsOkForDriver() throws Exception {
-        UserPrincipal principal = new UserPrincipal(2L, "DRIVER");
+        UserPrincipal principal = new UserPrincipal(2L, "SUPIR");
         var auth = new UsernamePasswordAuthenticationToken(
                 principal,
                 null,
-                List.of(new SimpleGrantedAuthority("ROLE_DRIVER"))
+                List.of(new SimpleGrantedAuthority("ROLE_SUPIR"))
         );
 
         UpdateStatusPengirimanRequest request = new UpdateStatusPengirimanRequest(StatusPengiriman.MENGIRIM);
@@ -112,11 +113,11 @@ class PengirimanControllerWebMvcTest {
 
     @Test
     void updateStatus_rejectsNullStatus() throws Exception {
-        UserPrincipal principal = new UserPrincipal(2L, "DRIVER");
+        UserPrincipal principal = new UserPrincipal(2L, "SUPIR");
         var auth = new UsernamePasswordAuthenticationToken(
                 principal,
                 null,
-                List.of(new SimpleGrantedAuthority("ROLE_DRIVER"))
+                List.of(new SimpleGrantedAuthority("ROLE_SUPIR"))
         );
 
         UpdateStatusPengirimanRequest request = new UpdateStatusPengirimanRequest(null);
@@ -191,7 +192,7 @@ class PengirimanControllerWebMvcTest {
                 List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))
         );
 
-        when(pengirimanService.getPengirimanById(eq(404L)))
+        when(pengirimanService.getPengirimanByIdForUser(eq(404L), eq(1L), eq("ADMIN")))
                 .thenThrow(new IllegalArgumentException("Pengiriman not found"));
 
         mockMvc.perform(get("/api/pengiriman/404")

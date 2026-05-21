@@ -10,6 +10,7 @@ import org.mockito.Mockito;
 import org.springframework.http.HttpStatus;
 
 import java.util.List;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,7 +33,7 @@ public class PengirimanControllerTest {
         UserPrincipal principal = new UserPrincipal(1L, "MANDOR");
         AssignDriverRequest req = AssignDriverRequest.builder()
                 .driverId(2L)
-                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(10L, 100.0)))
+                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(UUID.randomUUID())))
                 .build();
 
         Pengiriman saved = new Pengiriman();
