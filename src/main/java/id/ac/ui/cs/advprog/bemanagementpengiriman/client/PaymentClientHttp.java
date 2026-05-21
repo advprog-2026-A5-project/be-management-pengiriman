@@ -14,7 +14,7 @@ public class PaymentClientHttp implements PaymentClient {
 
     public PaymentClientHttp(
             RestClient.Builder builder,
-            @Value("${payment.service.base-url:http://localhost:8084}") String baseUrl
+            @Value("${mysawit.services.pembayaran.base-url:http://localhost:8084}") String baseUrl
     ) {
         this.restClient = builder.baseUrl(baseUrl).build();
     }

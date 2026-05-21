@@ -17,7 +17,7 @@ public class HarvestClientHttp implements HarvestClient {
 
     public HarvestClientHttp(
             RestClient.Builder builder,
-            @Value("${harvest.service.base-url:http://localhost:8082}") String baseUrl
+            @Value("${mysawit.services.hasil-panen.base-url:http://localhost:8082}") String baseUrl
     ) {
         this.restClient = builder.baseUrl(baseUrl).build();
     }

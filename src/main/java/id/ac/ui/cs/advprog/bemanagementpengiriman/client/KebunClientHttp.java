@@ -17,8 +17,8 @@ public class KebunClientHttp implements KebunClient {
     private final String serviceToken;
 
     public KebunClientHttp(RestClient.Builder builder,
-            @Value("${kebun.service.base-url:http://localhost:8081}") String baseUrl,
-            @Value("${kebun.service.auth-token:}") String serviceToken) {
+            @Value("${mysawit.services.kebun.base-url:http://localhost:8081}") String baseUrl,
+            @Value("${mysawit.services.kebun.auth-token:}") String serviceToken) {
         this.restClient = builder.baseUrl(baseUrl).build();
         this.serviceToken = serviceToken;
     }
