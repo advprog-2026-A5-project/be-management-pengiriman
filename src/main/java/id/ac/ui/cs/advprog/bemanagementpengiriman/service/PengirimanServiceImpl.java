@@ -189,15 +189,10 @@ public class PengirimanServiceImpl implements PengirimanService {
     public List<Pengiriman> getPengirimanHistoryByDriver(Long driverId, LocalDate startDate, LocalDate endDate) {
         ensureUserHasRole(driverId, ROLE_SUPIR, "Driver not found");
 
-            validateDateRange(startDate, endDate);
+        validateDateRange(startDate, endDate);
 
-            return pengirimanRepository.findDriverHistory(
-                driverId,
-                SUPIR_HISTORY_STATUSES,
-                toStartDateTime(startDate),
-                toEndDateTime(endDate)
-            );
-            }
+        return findDriverHistory(driverId, toStartDateTime(startDate), toEndDateTime(endDate));
+    }
 
     @Override
     public List<Pengiriman> getOngoingPengiriman(Long mandorId) {
@@ -227,12 +222,7 @@ public class PengirimanServiceImpl implements PengirimanService {
         LocalDateTime startDate = date == null ? null : date.atStartOfDay();
         LocalDateTime endDate = date == null ? null : date.atTime(LocalTime.MAX);
 
-        return pengirimanRepository.findForAdminApproval(
-                StatusPengiriman.APPROVED_MANDOR,
-            mandorIds,
-                startDate,
-                endDate
-        );
+        return findApprovedMandorShipments(mandorIds, startDate, endDate);
     }
 
     @Override
@@ -523,5 +513,63 @@ public class PengirimanServiceImpl implements PengirimanService {
 
     private LocalDateTime toEndDateTime(LocalDate date) {
         return date == null ? null : date.atTime(LocalTime.MAX);
+    }
+
+    private List<Pengiriman> findDriverHistory(Long driverId, LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate != null && endDate != null) {
+            return pengirimanRepository.findByDriverIdAndStatusInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+                    driverId,
+                    SUPIR_HISTORY_STATUSES,
+                    startDate,
+                    endDate
+            );
+        }
+        if (startDate != null) {
+            return pengirimanRepository.findByDriverIdAndStatusInAndUpdatedAtGreaterThanEqualOrderByUpdatedAtDesc(
+                    driverId,
+                    SUPIR_HISTORY_STATUSES,
+                    startDate
+            );
+        }
+        if (endDate != null) {
+            return pengirimanRepository.findByDriverIdAndStatusInAndUpdatedAtLessThanEqualOrderByUpdatedAtDesc(
+                    driverId,
+                    SUPIR_HISTORY_STATUSES,
+                    endDate
+            );
+        }
+        return pengirimanRepository.findByDriverIdAndStatusInOrderByUpdatedAtDesc(driverId, SUPIR_HISTORY_STATUSES);
+    }
+
+    private List<Pengiriman> findApprovedMandorShipments(
+            List<Long> mandorIds,
+            LocalDateTime startDate,
+            LocalDateTime endDate
+    ) {
+        boolean hasMandorFilter = mandorIds != null && !mandorIds.isEmpty();
+        boolean hasDateFilter = startDate != null && endDate != null;
+
+        if (hasMandorFilter && hasDateFilter) {
+            return pengirimanRepository.findByStatusAndMandorIdInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+                    StatusPengiriman.APPROVED_MANDOR,
+                    mandorIds,
+                    startDate,
+                    endDate
+            );
+        }
+        if (hasMandorFilter) {
+            return pengirimanRepository.findByStatusAndMandorIdInOrderByUpdatedAtDesc(
+                    StatusPengiriman.APPROVED_MANDOR,
+                    mandorIds
+            );
+        }
+        if (hasDateFilter) {
+            return pengirimanRepository.findByStatusAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+                    StatusPengiriman.APPROVED_MANDOR,
+                    startDate,
+                    endDate
+            );
+        }
+        return pengirimanRepository.findByStatusOrderByUpdatedAtDesc(StatusPengiriman.APPROVED_MANDOR);
     }
 }
