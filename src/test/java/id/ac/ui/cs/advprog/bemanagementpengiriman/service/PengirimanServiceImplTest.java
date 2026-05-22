@@ -26,7 +26,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.AbstractList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -828,5 +830,426 @@ class PengirimanServiceImplTest {
         );
 
         assertEquals("Supir is not assigned to this pengiriman", ex.getMessage());
+    }
+
+    @Test
+    void rejectByMandor_shouldSetRejectedStatusAndTrimReason() {
+        Pengiriman pengiriman = Pengiriman.builder()
+                .id(700L)
+                .mandorId(1L)
+                .status(StatusPengiriman.TIBA_DI_TUJUAN)
+                .acknowledgedWeightKg(250.0)
+                .build();
+
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+        when(pengirimanRepository.findById(700L)).thenReturn(Optional.of(pengiriman));
+        when(pengirimanRepository.save(any(Pengiriman.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Pengiriman result = pengirimanService.rejectByMandor(700L, 1L, "  Tidak sesuai  ");
+
+        assertEquals(StatusPengiriman.REJECTED_MANDOR, result.getStatus());
+        assertEquals("Tidak sesuai", result.getRejectionReason());
+        assertNull(result.getAcknowledgedWeightKg());
+        verify(eventPublisher).publish("pengiriman-rejected-mandor", result);
+    }
+
+    @Test
+    void getPengirimanByIdForUser_shouldAllowAdminAndAssignedSupirAndRejectUnknownRole() {
+        Pengiriman pengiriman = Pengiriman.builder()
+                .id(701L)
+                .mandorId(1L)
+                .driverId(2L)
+                .build();
+
+        when(pengirimanRepository.findById(701L)).thenReturn(Optional.of(pengiriman));
+        when(userClient.findById(99L)).thenReturn(Optional.of(user(99L, "admin", "ADMIN")));
+        when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
+
+        assertEquals(pengiriman, pengirimanService.getPengirimanByIdForUser(701L, 99L, "ADMIN"));
+        assertEquals(pengiriman, pengirimanService.getPengirimanByIdForUser(701L, 2L, "SUPIR"));
+
+        SecurityException ex = assertThrows(
+                SecurityException.class,
+                () -> pengirimanService.getPengirimanByIdForUser(701L, 99L, "PETANI")
+        );
+        assertEquals("Only ADMIN, MANDOR, or SUPIR can access this endpoint", ex.getMessage());
+    }
+
+    @Test
+    void partialRejectByAdmin_shouldRejectMissingAndNonPositiveAcknowledgedWeight() {
+        Pengiriman pengiriman = Pengiriman.builder()
+                .id(702L)
+                .status(StatusPengiriman.APPROVED_MANDOR)
+                .totalWeightKg(300.0)
+                .build();
+
+        when(userClient.findById(99L)).thenReturn(Optional.of(user(99L, "admin", "ADMIN")));
+        when(pengirimanRepository.findById(702L)).thenReturn(Optional.of(pengiriman));
+
+        IllegalArgumentException missingWeight = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.partialRejectByAdmin(702L, 99L, null, "rusak")
+        );
+        assertEquals("Acknowledged weight is required for partial rejection", missingWeight.getMessage());
+
+        IllegalArgumentException zeroWeight = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.partialRejectByAdmin(702L, 99L, 0.0, "rusak")
+        );
+        assertEquals("Acknowledged weight must be greater than 0", zeroWeight.getMessage());
+        verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+    }
+
+    @Test
+    void assignDriver_shouldRejectWhenTotalWeightExceedsCapacity() {
+        UUID harvestId1 = UUID.randomUUID();
+        UUID harvestId2 = UUID.randomUUID();
+        AssignDriverRequest request = AssignDriverRequest.builder()
+                .driverId(2L)
+                .harvestItems(List.of(
+                        new AssignDriverRequest.HarvestItemDto(harvestId1),
+                        new AssignDriverRequest.HarvestItemDto(harvestId2)
+                ))
+                .build();
+
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+        when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
+        when(harvestClient.getTransportEligibility(harvestId1))
+                .thenReturn(Optional.of(eligible(harvestId1, 250.0)));
+        when(harvestClient.getTransportEligibility(harvestId2))
+                .thenReturn(Optional.of(eligible(harvestId2, 200.0)));
+        when(pengirimanRepository.countActiveShipmentByHarvestId(any(UUID.class), anyCollection()))
+                .thenReturn(0L);
+
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.assignDriver(1L, request)
+        );
+
+        assertEquals("Total weight 450.00 Kg exceeds maximum capacity of 400 Kg", ex.getMessage());
+        verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+    }
+
+    @Test
+    void assignDriver_shouldRejectWhenTotalWeightDoesNotIncrease() {
+        List<AssignDriverRequest.HarvestItemDto> emptyWhileReportedNonEmpty = new AbstractList<>() {
+            @Override
+            public AssignDriverRequest.HarvestItemDto get(int index) {
+                throw new IndexOutOfBoundsException(index);
+            }
+
+            @Override
+            public int size() {
+                return 0;
+            }
+
+            @Override
+            public boolean isEmpty() {
+                return false;
+            }
+        };
+        AssignDriverRequest request = AssignDriverRequest.builder()
+                .driverId(2L)
+                .harvestItems(emptyWhileReportedNonEmpty)
+                .build();
+
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+        when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
+
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.assignDriver(1L, request)
+        );
+
+        assertEquals("Total weight must be greater than 0", ex.getMessage());
+        verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+    }
+
+    @Test
+    void assignDriver_shouldRejectNullHarvestItemAndNullHarvestId() {
+        AssignDriverRequest nullItemRequest = AssignDriverRequest.builder()
+                .driverId(2L)
+                .harvestItems(Collections.singletonList(null))
+                .build();
+
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+        when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
+
+        IllegalArgumentException nullItem = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.assignDriver(1L, nullItemRequest)
+        );
+        assertEquals("Harvest item cannot be null", nullItem.getMessage());
+
+        AssignDriverRequest nullHarvestIdRequest = AssignDriverRequest.builder()
+                .driverId(2L)
+                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(null)))
+                .build();
+
+        IllegalArgumentException nullHarvestId = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.assignDriver(1L, nullHarvestIdRequest)
+        );
+        assertEquals("Harvest ID is required for each item", nullHarvestId.getMessage());
+        verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+    }
+
+    @Test
+    void assignDriver_shouldRejectMissingDriverId() {
+        AssignDriverRequest request = AssignDriverRequest.builder()
+                .driverId(null)
+                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(UUID.randomUUID())))
+                .build();
+
+        IllegalArgumentException ex = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.assignDriver(1L, request)
+        );
+
+        assertEquals("Driver ID is required", ex.getMessage());
+        verifyNoInteractions(userClient);
+        verifyNoInteractions(pengirimanRepository);
+    }
+
+    @Test
+    void getApprovedPengirimanForAdmin_shouldReturnEmptyWhenMandorNameHasNoMatches() {
+        when(userClient.findById(99L)).thenReturn(Optional.of(user(99L, "admin", "ADMIN")));
+        when(userClient.findByNameAndRole("unknown", "MANDOR")).thenReturn(List.of());
+
+        List<Pengiriman> result = pengirimanService.getApprovedPengirimanForAdmin(99L, "unknown", null);
+
+        assertTrue(result.isEmpty());
+        verifyNoInteractions(pengirimanRepository);
+    }
+
+    @Test
+    void approveByMandor_shouldRejectUnassignedMandorAndInvalidStatus() {
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+
+        Pengiriman otherMandorShipment = Pengiriman.builder()
+                .id(800L)
+                .mandorId(9L)
+                .status(StatusPengiriman.TIBA_DI_TUJUAN)
+                .build();
+        when(pengirimanRepository.findById(800L)).thenReturn(Optional.of(otherMandorShipment));
+
+        SecurityException unassignedMandor = assertThrows(
+                SecurityException.class,
+                () -> pengirimanService.approveByMandor(800L, 1L)
+        );
+        assertEquals("Mandor is not assigned to this pengiriman", unassignedMandor.getMessage());
+
+        Pengiriman stillLoadingShipment = Pengiriman.builder()
+                .id(801L)
+                .mandorId(1L)
+                .status(StatusPengiriman.MEMUAT)
+                .build();
+        when(pengirimanRepository.findById(801L)).thenReturn(Optional.of(stillLoadingShipment));
+
+        IllegalStateException invalidStatus = assertThrows(
+                IllegalStateException.class,
+                () -> pengirimanService.approveByMandor(801L, 1L)
+        );
+        assertEquals("Mandor can only approve/reject shipment after it reaches destination",
+                invalidStatus.getMessage());
+        verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+    }
+
+    @Test
+    void rejectByMandor_shouldRejectUnassignedMandorAndInvalidStatus() {
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+
+        Pengiriman otherMandorShipment = Pengiriman.builder()
+                .id(810L)
+                .mandorId(9L)
+                .status(StatusPengiriman.TIBA_DI_TUJUAN)
+                .build();
+        when(pengirimanRepository.findById(810L)).thenReturn(Optional.of(otherMandorShipment));
+
+        SecurityException unassignedMandor = assertThrows(
+                SecurityException.class,
+                () -> pengirimanService.rejectByMandor(810L, 1L, "rusak")
+        );
+        assertEquals("Mandor is not assigned to this pengiriman", unassignedMandor.getMessage());
+
+        Pengiriman stillLoadingShipment = Pengiriman.builder()
+                .id(811L)
+                .mandorId(1L)
+                .status(StatusPengiriman.MEMUAT)
+                .build();
+        when(pengirimanRepository.findById(811L)).thenReturn(Optional.of(stillLoadingShipment));
+
+        IllegalStateException invalidStatus = assertThrows(
+                IllegalStateException.class,
+                () -> pengirimanService.rejectByMandor(811L, 1L, "rusak")
+        );
+        assertEquals("Mandor can only approve/reject shipment after it reaches destination",
+                invalidStatus.getMessage());
+        verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+    }
+
+    @Test
+    void getPengirimanByIdForUser_shouldRejectUnassignedMandor() {
+        Pengiriman pengiriman = Pengiriman.builder()
+                .id(820L)
+                .mandorId(1L)
+                .driverId(2L)
+                .build();
+
+        when(pengirimanRepository.findById(820L)).thenReturn(Optional.of(pengiriman));
+        when(userClient.findById(9L)).thenReturn(Optional.of(user(9L, "mandor.lain", "MANDOR")));
+
+        SecurityException ex = assertThrows(
+                SecurityException.class,
+                () -> pengirimanService.getPengirimanByIdForUser(820L, 9L, "MANDOR")
+        );
+
+        assertEquals("Mandor is not assigned to this pengiriman", ex.getMessage());
+    }
+
+    @Test
+    void serviceQueries_shouldCoverRemainingDateAndAdminFilterBranches() {
+        when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
+        LocalDate startDate = LocalDate.of(2026, 5, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 22);
+
+        pengirimanService.getPengirimanHistoryByDriver(2L, startDate, null);
+        verify(pengirimanRepository).findByDriverIdAndStatusInAndUpdatedAtGreaterThanEqualOrderByUpdatedAtDesc(
+                eq(2L),
+                anyCollection(),
+                eq(startDate.atStartOfDay())
+        );
+
+        pengirimanService.getPengirimanHistoryByDriver(2L, null, endDate);
+        verify(pengirimanRepository).findByDriverIdAndStatusInAndUpdatedAtLessThanEqualOrderByUpdatedAtDesc(
+                eq(2L),
+                anyCollection(),
+                eq(endDate.atTime(LocalTime.MAX))
+        );
+
+        pengirimanService.getPengirimanHistoryByDriver(2L, null, null);
+        verify(pengirimanRepository).findByDriverIdAndStatusInOrderByUpdatedAtDesc(eq(2L), anyCollection());
+
+        when(userClient.findById(99L)).thenReturn(Optional.of(user(99L, "admin", "ADMIN")));
+        when(userClient.findByNameAndRole("mandor", "MANDOR"))
+                .thenReturn(List.of(user(1L, "mandor", "MANDOR")));
+
+        pengirimanService.getApprovedPengirimanForAdmin(99L, "mandor", null);
+        verify(pengirimanRepository).findByStatusAndMandorIdInOrderByUpdatedAtDesc(
+                eq(StatusPengiriman.APPROVED_MANDOR),
+                eq(List.of(1L))
+        );
+
+        pengirimanService.getApprovedPengirimanForAdmin(99L, null, endDate);
+        verify(pengirimanRepository).findByStatusAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+                eq(StatusPengiriman.APPROVED_MANDOR),
+                eq(endDate.atStartOfDay()),
+                eq(endDate.atTime(LocalTime.MAX))
+        );
+    }
+
+    @Test
+    void getAvailableDriversForMandor_shouldReturnEmptyWhenKebunHasNoAssignedSupirs() {
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+        when(kebunClient.getKebunDetail("KB001"))
+                .thenReturn(Optional.of(kebunDetail("KB001", "1", null)));
+        when(userClient.findByRole("SUPIR")).thenReturn(List.of(user(2L, "supir", "SUPIR")));
+
+        List<UserSummary> result = pengirimanService.getAvailableDriversForMandor(1L, null);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void adminActions_shouldRejectShipmentsNotApprovedByMandor() {
+        when(userClient.findById(99L)).thenReturn(Optional.of(user(99L, "admin", "ADMIN")));
+
+        Pengiriman loadingShipment = Pengiriman.builder()
+                .id(830L)
+                .status(StatusPengiriman.MEMUAT)
+                .totalWeightKg(300.0)
+                .build();
+        when(pengirimanRepository.findById(830L)).thenReturn(Optional.of(loadingShipment));
+
+        IllegalStateException approveError = assertThrows(
+                IllegalStateException.class,
+                () -> pengirimanService.approveByAdmin(830L, 99L)
+        );
+        assertEquals("Admin can only process shipments approved by mandor", approveError.getMessage());
+
+        IllegalStateException rejectError = assertThrows(
+                IllegalStateException.class,
+                () -> pengirimanService.rejectByAdmin(830L, 99L, "rusak")
+        );
+        assertEquals("Admin can only process shipments approved by mandor", rejectError.getMessage());
+
+        IllegalStateException partialRejectError = assertThrows(
+                IllegalStateException.class,
+                () -> pengirimanService.partialRejectByAdmin(830L, 99L, 100.0, "rusak")
+        );
+        assertEquals("Admin can only process shipments approved by mandor", partialRejectError.getMessage());
+        verify(pengirimanRepository, never()).save(any(Pengiriman.class));
+    }
+
+    @Test
+    void roleValidation_shouldRejectNullUserIdAndWrongRole() {
+        IllegalArgumentException nullUserId = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.getPengirimanByDriver(null)
+        );
+        assertEquals("Driver not found", nullUserId.getMessage());
+
+        when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
+        IllegalArgumentException wrongRole = assertThrows(
+                IllegalArgumentException.class,
+                () -> pengirimanService.getOngoingPengiriman(2L)
+        );
+        assertEquals("Mandor not found", wrongRole.getMessage());
+        verifyNoInteractions(pengirimanRepository);
+    }
+
+    @Test
+    void assignDriver_shouldSaveShipmentEvenWhenEventPublishingFails() {
+        UUID harvestId = UUID.randomUUID();
+        AssignDriverRequest request = AssignDriverRequest.builder()
+                .driverId(2L)
+                .harvestItems(List.of(new AssignDriverRequest.HarvestItemDto(harvestId)))
+                .build();
+
+        when(userClient.findById(1L)).thenReturn(Optional.of(user(1L, "mandor", "MANDOR")));
+        when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
+        when(harvestClient.getTransportEligibility(harvestId))
+                .thenReturn(Optional.of(eligible(harvestId, 100.0)));
+        when(pengirimanRepository.countActiveShipmentByHarvestId(eq(harvestId), anyCollection()))
+                .thenReturn(0L);
+        when(pengirimanRepository.save(any(Pengiriman.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new RuntimeException("kafka down")).when(eventPublisher)
+                .publish(eq("pengiriman-assigned"), any());
+
+        Pengiriman result = pengirimanService.assignDriver(1L, request);
+
+        assertEquals(StatusPengiriman.MEMUAT, result.getStatus());
+        assertEquals(100.0, result.getTotalWeightKg());
+    }
+
+    @Test
+    void approveByAdmin_shouldPersistApprovalEvenWhenPayrollRequestFails() {
+        Pengiriman pengiriman = Pengiriman.builder()
+                .id(840L)
+                .mandorId(1L)
+                .status(StatusPengiriman.APPROVED_MANDOR)
+                .totalWeightKg(250.0)
+                .build();
+
+        when(userClient.findById(99L)).thenReturn(Optional.of(user(99L, "admin", "ADMIN")));
+        when(pengirimanRepository.findById(840L)).thenReturn(Optional.of(pengiriman));
+        when(pengirimanRepository.save(any(Pengiriman.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new RuntimeException("payment down")).when(paymentClient)
+                .requestPayroll(99L, 1L, "MANDOR", 250.0);
+
+        Pengiriman result = pengirimanService.approveByAdmin(840L, 99L);
+
+        assertEquals(StatusPengiriman.APPROVED_ADMIN, result.getStatus());
+        assertEquals(250.0, result.getAcknowledgedWeightKg());
     }
 }
