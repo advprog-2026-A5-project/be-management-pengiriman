@@ -125,7 +125,7 @@ public class PengirimanServiceImpl implements PengirimanService {
                 .items(new ArrayList<>())
                 .build();
 
-        // Create pengiriman items
+        
         for (AssignDriverRequest.HarvestItemDto item : request.getHarvestItems()) {
             HarvestTransportEligibilityResponse eligibility = eligibilityByHarvestId.get(item.getHarvestId());
             PengirimanItem pengirimanItem = PengirimanItem.builder()
@@ -152,12 +152,12 @@ public class PengirimanServiceImpl implements PengirimanService {
         Pengiriman pengiriman = pengirimanRepository.findById(pengirimanId)
                 .orElseThrow(() -> new IllegalArgumentException("Pengiriman not found"));
 
-        // Verify the driver is assigned to this pengiriman
+        
         if (!pengiriman.getDriverId().equals(driverId)) {
             throw new SecurityException("Driver is not assigned to this pengiriman");
         }
 
-        // Validate state machine transition
+        
         StatusPengiriman currentStatus = pengiriman.getStatus();
         if (!currentStatus.canDriverTransitionTo(newStatus)) {
             throw new IllegalStateException(
@@ -495,7 +495,7 @@ public class PengirimanServiceImpl implements PengirimanService {
         try {
             eventPublisher.publish(topic, event);
         } catch (Exception ignored) {
-            // Best-effort integration event; domain state has already been persisted.
+            
         }
     }
 
@@ -503,7 +503,7 @@ public class PengirimanServiceImpl implements PengirimanService {
         try {
             paymentClient.requestPayroll(actorId, userId, role, kilogram);
         } catch (Exception ignored) {
-            // Payroll creation is an integration side effect and should not roll back shipment approval.
+            
         }
     }
 

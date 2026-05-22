@@ -22,7 +22,7 @@ public class PengirimanItem {
     @JoinColumn(name = "pengiriman_id", nullable = false)
     private Pengiriman shipment;
 
-    // Reference to approved harvest ID from another module
+    
     @Column(nullable = false)
     private UUID harvestId;
 
