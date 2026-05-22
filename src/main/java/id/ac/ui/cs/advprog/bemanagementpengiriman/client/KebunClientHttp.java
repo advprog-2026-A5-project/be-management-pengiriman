@@ -3,6 +3,7 @@ package id.ac.ui.cs.advprog.bemanagementpengiriman.client;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.KebunDetailResponse;
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.MandorKebunAssignmentResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -24,6 +25,12 @@ public class KebunClientHttp implements KebunClient {
     }
 
     @Override
+    @Cacheable(
+            cacheNames = "mandorKebunAssignment",
+            key = "#mandorId",
+            condition = "#mandorId != null",
+            unless = "#result == null || #result.isEmpty()"
+    )
     public Optional<MandorKebunAssignmentResponse> getMandorKebunAssignment(Long mandorId) {
         try {
             MandorKebunAssignmentResponse response = restClient.get()
@@ -38,6 +45,12 @@ public class KebunClientHttp implements KebunClient {
     }
 
     @Override
+    @Cacheable(
+            cacheNames = "kebunDetail",
+            key = "#kebunCode.trim().toUpperCase()",
+            condition = "#kebunCode != null && !#kebunCode.isBlank()",
+            unless = "#result == null || #result.isEmpty()"
+    )
     public Optional<KebunDetailResponse> getKebunDetail(String kebunCode) {
         try {
             KebunDetailResponse response = restClient.get()

@@ -8,7 +8,16 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
-@Table(name = "pengiriman")
+@Table(
+        name = "pengiriman",
+        indexes = {
+                @Index(name = "idx_pengiriman_driver_status", columnList = "driver_id,status"),
+                @Index(name = "idx_pengiriman_driver_status_updated", columnList = "driver_id,status,updated_at"),
+                @Index(name = "idx_pengiriman_mandor_status", columnList = "mandor_id,status"),
+                @Index(name = "idx_pengiriman_status_updated", columnList = "status,updated_at"),
+                @Index(name = "idx_pengiriman_status_mandor_updated", columnList = "status,mandor_id,updated_at")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

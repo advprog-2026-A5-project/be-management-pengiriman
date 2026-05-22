@@ -23,6 +23,7 @@ repositories {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -30,6 +31,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.retry:spring-retry'
     implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'jakarta.persistence:jakarta.persistence-api:3.1.0'
 
     implementation 'org.springframework.retry:spring-retry'
@@ -54,9 +56,9 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform()
-    // filter {
-    //     excludeTestsMatching("*FunctionalTest")
-    // }
+    
+    
+    
 
     finalizedBy(tasks.jacocoTestReport)
 }

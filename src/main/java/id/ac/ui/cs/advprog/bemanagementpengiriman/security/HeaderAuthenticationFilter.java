@@ -32,7 +32,7 @@ public class HeaderAuthenticationFilter extends HttpFilter {
                 var auth = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
             } catch (NumberFormatException ignored) {
-                // ignore invalid header values
+                
             }
         }
 
