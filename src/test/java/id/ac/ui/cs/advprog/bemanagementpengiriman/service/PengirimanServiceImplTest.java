@@ -314,7 +314,7 @@ class PengirimanServiceImplTest {
         );
 
         assertEquals("End date must be after or equal to start date", ex.getMessage());
-        verify(pengirimanRepository, never()).findDriverHistory(any(), any(), any(), any());
+        verifyNoInteractions(pengirimanRepository);
     }
 
     @Test
@@ -564,7 +564,12 @@ class PengirimanServiceImplTest {
         LocalDate endDate = LocalDate.of(2026, 4, 30);
 
         when(userClient.findById(2L)).thenReturn(Optional.of(user(2L, "supir", "SUPIR")));
-        when(pengirimanRepository.findDriverHistory(eq(2L), anyCollection(), any(), any()))
+        when(pengirimanRepository.findByDriverIdAndStatusInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+                eq(2L),
+                anyCollection(),
+                any(),
+                any()
+        ))
                 .thenReturn(List.of(Pengiriman.builder().id(100L).build()));
 
         List<Pengiriman> result = pengirimanService.getPengirimanHistoryByDriver(2L, startDate, endDate);
@@ -576,7 +581,7 @@ class PengirimanServiceImplTest {
         ArgumentCaptor<LocalDateTime> startDateTimeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> endDateTimeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
 
-        verify(pengirimanRepository).findDriverHistory(
+        verify(pengirimanRepository).findByDriverIdAndStatusInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
                 eq(2L),
                 statusesCaptor.capture(),
                 startDateTimeCaptor.capture(),
@@ -599,7 +604,7 @@ class PengirimanServiceImplTest {
         );
 
         assertEquals("Driver not found", ex.getMessage());
-        verify(pengirimanRepository, never()).findDriverHistory(any(), anyCollection(), any(), any());
+        verifyNoInteractions(pengirimanRepository);
     }
 
     @Test
@@ -640,7 +645,12 @@ class PengirimanServiceImplTest {
         when(userClient.findById(99L)).thenReturn(Optional.of(admin));
         when(userClient.findByNameAndRole("man", "MANDOR"))
                 .thenReturn(List.of(mandor));
-        when(pengirimanRepository.findForAdminApproval(eq(StatusPengiriman.APPROVED_MANDOR), anyCollection(), any(), any()))
+        when(pengirimanRepository.findByStatusAndMandorIdInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+                eq(StatusPengiriman.APPROVED_MANDOR),
+                anyCollection(),
+                any(),
+                any()
+        ))
                 .thenReturn(List.of(Pengiriman.builder().id(300L).build()));
 
         List<Pengiriman> result = pengirimanService.getApprovedPengirimanForAdmin(99L, "  man  ", date);
@@ -651,7 +661,7 @@ class PengirimanServiceImplTest {
         ArgumentCaptor<Collection<Long>> mandorIdsCaptor = ArgumentCaptor.forClass(Collection.class);
         ArgumentCaptor<LocalDateTime> startDateTimeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> endDateTimeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-        verify(pengirimanRepository).findForAdminApproval(
+        verify(pengirimanRepository).findByStatusAndMandorIdInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
                 eq(StatusPengiriman.APPROVED_MANDOR),
                 mandorIdsCaptor.capture(),
                 startDateTimeCaptor.capture(),
@@ -666,13 +676,13 @@ class PengirimanServiceImplTest {
     @Test
     void getApprovedPengirimanForAdmin_shouldPassNullFiltersWhenEmpty() {
         when(userClient.findById(99L)).thenReturn(Optional.of(user(99L, "admin", "ADMIN")));
-        when(pengirimanRepository.findForAdminApproval(eq(StatusPengiriman.APPROVED_MANDOR), isNull(), isNull(), isNull()))
+        when(pengirimanRepository.findByStatusOrderByUpdatedAtDesc(StatusPengiriman.APPROVED_MANDOR))
                 .thenReturn(List.of());
 
         List<Pengiriman> result = pengirimanService.getApprovedPengirimanForAdmin(99L, "   ", null);
 
         assertTrue(result.isEmpty());
-        verify(pengirimanRepository).findForAdminApproval(eq(StatusPengiriman.APPROVED_MANDOR), isNull(), isNull(), isNull());
+        verify(pengirimanRepository).findByStatusOrderByUpdatedAtDesc(StatusPengiriman.APPROVED_MANDOR);
     }
 
     @Test
