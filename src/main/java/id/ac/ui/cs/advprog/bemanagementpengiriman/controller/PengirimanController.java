@@ -50,7 +50,7 @@ public class PengirimanController {
             }
             Pengiriman pengiriman = pengirimanService.assignDriver(principal.getId(), request);
             return ResponseEntity.status(HttpStatus.CREATED).body(pengiriman);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
@@ -100,7 +100,7 @@ public class PengirimanController {
 
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body("Only MANDOR or SUPIR can access this endpoint");
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
