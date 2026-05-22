@@ -2,6 +2,7 @@ package id.ac.ui.cs.advprog.bemanagementpengiriman.client;
 
 import id.ac.ui.cs.advprog.bemanagementpengiriman.dto.UserSummary;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +29,12 @@ public class UserClientHttp implements UserClient {
     }
 
     @Override
+    @Cacheable(
+            cacheNames = "userById",
+            key = "#id",
+            condition = "#id != null",
+            unless = "#result == null || #result.isEmpty()"
+    )
     public Optional<UserSummary> findById(Long id) {
         if (id == null) {
             return Optional.empty();
@@ -48,6 +55,12 @@ public class UserClientHttp implements UserClient {
     }
 
     @Override
+    @Cacheable(
+            cacheNames = "usersByNameAndRole",
+            key = "(#name == null ? '' : #name.trim().toLowerCase()) + ':' + #role.trim().toUpperCase()",
+            condition = "#role != null && !#role.isBlank()",
+            unless = "#result == null || #result.isEmpty()"
+    )
     public List<UserSummary> findByNameAndRole(String name, String role) {
         if (role == null || role.isBlank()) {
             return List.of();
@@ -66,6 +79,12 @@ public class UserClientHttp implements UserClient {
     }
 
     @Override
+    @Cacheable(
+            cacheNames = "usersByRole",
+            key = "#role.trim().toUpperCase()",
+            condition = "#role != null && !#role.isBlank()",
+            unless = "#result == null || #result.isEmpty()"
+    )
     public List<UserSummary> findByRole(String role) {
         if (role == null || role.isBlank()) {
             return List.of();
