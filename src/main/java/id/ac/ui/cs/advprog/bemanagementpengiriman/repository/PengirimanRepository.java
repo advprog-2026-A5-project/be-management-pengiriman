@@ -16,39 +16,40 @@ import java.util.UUID;
 public interface PengirimanRepository extends JpaRepository<Pengiriman, Long> {
     List<Pengiriman> findByStatus(StatusPengiriman status);
     List<Pengiriman> findByDriverIdAndStatusIn(Long driverId, Collection<StatusPengiriman> statuses);
+    List<Pengiriman> findByDriverIdAndStatusInOrderByUpdatedAtDesc(Long driverId, Collection<StatusPengiriman> statuses);
+    List<Pengiriman> findByDriverIdAndStatusInAndUpdatedAtGreaterThanEqualOrderByUpdatedAtDesc(
+            Long driverId,
+            Collection<StatusPengiriman> statuses,
+            LocalDateTime startDate
+    );
+    List<Pengiriman> findByDriverIdAndStatusInAndUpdatedAtLessThanEqualOrderByUpdatedAtDesc(
+            Long driverId,
+            Collection<StatusPengiriman> statuses,
+            LocalDateTime endDate
+    );
+    List<Pengiriman> findByDriverIdAndStatusInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+            Long driverId,
+            Collection<StatusPengiriman> statuses,
+            LocalDateTime startDate,
+            LocalDateTime endDate
+    );
     List<Pengiriman> findByMandorIdAndStatusIn(Long mandorId, Collection<StatusPengiriman> statuses);
     List<Pengiriman> findByMandorIdAndDriverIdAndStatusIn(Long mandorId, Long driverId, Collection<StatusPengiriman> statuses);
-
-    @Query("""
-            SELECT p
-            FROM Pengiriman p
-            WHERE p.driverId = :driverId
-              AND p.status IN :statuses
-              AND (:startDate IS NULL OR p.updatedAt >= :startDate)
-              AND (:endDate IS NULL OR p.updatedAt <= :endDate)
-            ORDER BY p.updatedAt DESC
-            """)
-    List<Pengiriman> findDriverHistory(
-            @Param("driverId") Long driverId,
-            @Param("statuses") Collection<StatusPengiriman> statuses,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate
+    List<Pengiriman> findByStatusOrderByUpdatedAtDesc(StatusPengiriman status);
+    List<Pengiriman> findByStatusAndMandorIdInOrderByUpdatedAtDesc(
+            StatusPengiriman status,
+            Collection<Long> mandorIds
     );
-
-    @Query("""
-            SELECT p
-            FROM Pengiriman p
-            WHERE p.status = :status
-              AND (:mandorIds IS NULL OR p.mandorId IN :mandorIds)
-              AND (:startDate IS NULL OR p.updatedAt >= :startDate)
-              AND (:endDate IS NULL OR p.updatedAt <= :endDate)
-            ORDER BY p.updatedAt DESC
-            """)
-    List<Pengiriman> findForAdminApproval(
-            @Param("status") StatusPengiriman status,
-            @Param("mandorIds") Collection<Long> mandorIds,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate
+    List<Pengiriman> findByStatusAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+            StatusPengiriman status,
+            LocalDateTime startDate,
+            LocalDateTime endDate
+    );
+    List<Pengiriman> findByStatusAndMandorIdInAndUpdatedAtBetweenOrderByUpdatedAtDesc(
+            StatusPengiriman status,
+            Collection<Long> mandorIds,
+            LocalDateTime startDate,
+            LocalDateTime endDate
     );
 
     @Query("""
