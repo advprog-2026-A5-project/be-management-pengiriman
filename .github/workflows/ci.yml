@@ -159,7 +159,7 @@ jobs:
 
       - name: Restart Spring Boot app
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+          -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             chmod 600 /opt/be-management-pengiriman/.env
             sudo systemctl daemon-reload
             sudo systemctl restart be-management-pengiriman
